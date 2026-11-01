@@ -1,0 +1,30 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#2b6cb0">
+<title>Miniaturas · Puesto</title><link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css?v=10"></head><body>
+<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="ver" class="pill ver">v10</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
+<main>
+<section id="v-login" class="view">
+ <div class="card"><h1>PIN</h1><select id="who" class="who"></select><div id="pin-dots" class="dots"></div>
+ <div class="pad" id="pad"></div><p id="login-msg" class="msg"></p>
+ <p class="hint" id="be">EJEMPLO · datos de prueba</p></div>
+</section>
+<section id="v-stall" class="view" hidden>
+ <h2 id="stall-name"></h2><div id="grid" class="grid"></div>
+ <div id="rech" class="rech" hidden></div><div id="undo" class="undo" hidden><span id="undo-txt"></span><button id="undo-btn" class="blk red">DESHACER</button></div>
+</section>
+<section id="v-owner" class="view" hidden>
+ <h2>CONECTAR MI HOJA</h2><div id="hoja"><p id="hoja-est" class="hint2"></p><input id="hoja-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"><p id="hoja-msg" class="msg" hidden></p><div class="row2"><button id="hoja-ok" class="blk green">GUARDAR Y PROBAR</button><button id="hoja-off" class="blk red">DESCONECTAR</button></div></div>
+ <h2>DUEÑO</h2><label class="row">Aviso stock bajo ≤ <input id="thr" type="number" min="0" max="99" value="3"></label>
+ <div class="tabs" id="stall-tabs"></div><div id="stock-list"></div>
+ <h2>GESTIÓN</h2><div class="tabs" id="adm-tabs"><button class="blk" data-t="figuras">Figuras</button><button class="blk" data-t="puestos">Puestos</button><button class="blk" data-t="vendedores">Vendedores</button><button class="blk" data-t="stock">Mover stock</button></div>
+ <div id="adm"></div>
+ <dialog id="dlg"><form method="dialog" id="dlg-f"><h3 id="dlg-t"></h3><div id="dlg-c"></div><p id="dlg-m" class="msg"></p><div class="dlg-b"><button value="no" class="blk" formnovalidate>Cancelar</button><button value="ok" class="blk green" id="dlg-ok">Guardar</button></div></form></dialog>
+ <h2>PUESTOS Y PIN</h2><p class="hint2">Solo dueño. No se guarda en el dispositivo: se borra al salir, cambiar de vista u ocultar la pestaña.</p><div id="pines"></div><button id="pines-ver" class="blk blue">VER PINES</button>
+ <h2>VENTAS DE HOY</h2><div id="sales"></div><button id="refresh" class="blk blue">ACTUALIZAR</button>
+</section>
+</main>
+<script src="db.js?v=10"></script><script src="api.js?v=10"></script><script src="app.js?v=10"></script>
+</body></html>
