@@ -67,6 +67,19 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 #hoja input{width:100%;padding:12px;font-size:16px;border:3px solid #333;border-radius:8px;box-sizing:border-box}#hoja .row2{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}#hoja .msg.okm{color:#3d7a55}#hoja-msg{line-height:1.4}
 .pill.ver{font-size:11px;opacity:.75}
 #hoja{margin-bottom:8px}
+.owner-title{margin-bottom:6px}.owner-intro{margin-top:0}
+.acc{display:flex;flex-direction:column;gap:10px}
+.acc-item{background:transparent;border:0;padding:0;margin:0}
+.acc-item>summary{list-style:none;cursor:pointer;display:block;width:100%;text-align:left;margin:0}
+.acc-item>summary::-webkit-details-marker{display:none}
+.acc-item>summary::after{content:" ▾";float:right;opacity:.7}
+.acc-item[open]>summary::after{content:" ▴"}
+.acc-item[open]>summary{background:var(--g);color:var(--w)}
+.acc-body{background:rgba(251,250,246,.12);border:3px solid var(--k);border-top:0;border-radius:0 0 10px 10px;padding:14px 12px 12px;margin-top:-4px}
+.acc-help{color:var(--w);font-size:13px;line-height:1.35;margin:0 0 12px;opacity:.95}
+.acc-help code{font-family:Pix,monospace;font-size:11px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:4px}
+.acc-body .hint2{color:rgba(255,255,255,.9)}
+.acc-sum.blk{margin-bottom:0}
 /* Busy / loading on action buttons */
 .blk,.pad button{position:relative;overflow:hidden}
 .blk.busy,.pad button.busy{pointer-events:none;opacity:.85;color:transparent!important;text-shadow:none!important}
