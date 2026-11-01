@@ -8,20 +8,24 @@ const API=(()=>{
  const http=async(req,u)=>{const r=await fetch(u||url(),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(req),redirect:'follow',cache:'no-store'});
   if(!r.ok)throw Object.assign(new Error('HTTP '+r.status),{red:true});return r.json()};
  /* ---------- transporte MOCK: emula doPost de Code.gs en localStorage ---------- */
- const K='miniaturas_mock_v6';
+ const K='miniaturas_mock_v7';
  const nid=(arr,pre,w)=>pre+String(1+Math.max(0,...arr.map(x=>+String(x.id).slice(pre.length)||0))).padStart(w,'0');
- const SEED={puestosT:[{id:'P1',nombre:'Puesto 1 EJEMPLO',activo:1},{id:'P2',nombre:'Puesto 2 EJEMPLO',activo:1},{id:'P3',nombre:'Puesto 3 EJEMPLO',activo:1}],vendedores:[{id:'V01',nombre:'Vendedor EJEMPLO 1',puesto:'P1',pin:'111111',activo:true},{id:'V02',nombre:'Vendedor EJEMPLO 2',puesto:'P2',pin:'222222',activo:true},{id:'V03',nombre:'Vendedor EJEMPLO 3',puesto:'P3',pin:'333333',activo:true}],dueno_pin:'999999',
-  productos:[['F01','Dragón EJEMPLO',15,4.2,'#c8706a'],['F02','Caballero EJEMPLO',12,3,'#6f8fc4'],['F03','Castillo EJEMPLO',25,8,'#9c8574'],['F04','Robot EJEMPLO',10,2.5,'#8a9099'],
-   ['F05','Gato EJEMPLO',8,2,'#e0a878'],['F06','Seta EJEMPLO',5,1,'#71a882'],['F07','Nave EJEMPLO',18,5,'#9580b8'],['F08','Pirata EJEMPLO',14,4,'#e0bd6a']]
+ /* Clean demo base: no puestos (user recreates P1/P2); 4 products only; dueño 999999. */
+ const SEED={puestosT:[],vendedores:[],dueno_pin:'999999',
+  productos:[['F01','Dragón EJEMPLO',15,4.2,'#c8706a'],['F02','Caballero EJEMPLO',12,3,'#6f8fc4'],['F03','Castillo EJEMPLO',25,8,'#9c8574'],['F04','Robot EJEMPLO',10,2.5,'#8a9099']]
    .map(([id,nombre,precio,coste,color_icono])=>({id,nombre,precio,coste,color_icono,foto_url:'',activo:1})),
-  stock:{P1:{F01:5,F02:8,F03:2,F04:10,F05:3,F06:12,F07:6,F08:1},P2:{F01:4,F02:4,F03:4,F04:4,F05:4,F06:4,F07:4,F08:4},P3:{F01:3,F02:6,F03:2,F04:5,F05:7,F06:9,F07:4,F08:2}},ventas:[],asignaciones:[]};
+  stock:{},ventas:[],asignaciones:[]};
  const load=()=>JSON.parse(localStorage.getItem(K)||'null')||JSON.parse(JSON.stringify(SEED)),save=d=>localStorage.setItem(K,JSON.stringify(d));
  const tok=o=>btoa(JSON.stringify({...o,exp:Date.now()+14*3600e3}))+'.mock',untok=(t,rol)=>{if(!t||!String(t).endsWith('.mock'))throw'TOKEN_INVALIDO';
   const d=JSON.parse(atob(t.split('.')[0]));if(Date.now()>d.exp)throw'TOKEN_CADUCADO';if(rol&&d.rol!==rol)throw'SIN_PERMISO';return d};
  const stockDe=(d,p)=>Object.entries(d.stock[p]||{}).map(([producto,ini])=>{const v=d.ventas.filter(r=>r.puesto===p&&r.producto===producto).reduce((a,r)=>a-r.cantidad,0);return{producto,cantidad_inicial:ini,vendidas:v,quedan:ini-v}});
  const UUID4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
  const A={
-  puestos(q,d){return{puestos:d.puestosT.filter(p=>p.activo).map(p=>p.id).sort()}},
+  puestos(q,d){const pins={};d.vendedores.filter(v=>v.activo&&v.pin).forEach(v=>{pins[v.puesto]=v.pin});
+   return{puestos:d.puestosT.filter(p=>p.activo).map(p=>p.id).sort(),demo_pins:pins}},
+  demo_limpiar(q,d){untok(q.token_dueno,'dueno');d.puestosT.forEach(p=>p.activo=0);d.vendedores.forEach(v=>v.activo=false);
+   d.productos.forEach(p=>{if(!['F01','F02','F03','F04'].includes(p.id))p.activo=0});d.stock={};d.asignaciones=[];
+   return{ok_limpiar:true,puestos_activos:0,vendedores_activos:0,figuras_activas:d.productos.filter(p=>p.activo).length}},
   /* ---- CRUD del dueño (PROPUESTA: aún no está en Code.gs; ver bitacora.md) · borrado lógico ---- */
   /* ping: comprobar conexión (sin token). En Code.gs: {ok:true,hoja:getName(),version} */
   ping(q,d){return{app:'miniaturas',hoja:'Hoja EJEMPLO (demo)',version:'demo-v8'}},

@@ -3,13 +3,15 @@
 <meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#2b6cb0">
 <title>Miniaturas · Puesto</title><link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=19"></head><body>
-<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="ver" class="pill ver">v19</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
+<link rel="stylesheet" href="style.css?v=21"></head><body>
+<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="ver" class="pill ver">v21</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
 <main>
 <section id="v-login" class="view">
- <div class="card"><h1>PIN</h1><select id="who" class="who"></select><div id="pin-dots" class="dots"></div>
+ <div class="card"><h1>PIN</h1><select id="who" class="who"></select>
+ <p id="login-pin" class="login-pin" hidden></p>
+ <div id="pin-dots" class="dots"></div>
  <div class="pad" id="pad"></div><p id="login-msg" class="msg"></p>
- <p class="hint2">Elige el puesto abierto e introduce tu PIN. Puedes trabajar en otro puesto en otra sesión con el mismo PIN.</p>
+ <p class="hint2">Elige el puesto e introduce el PIN. En demo el PIN de esa sesión se muestra arriba.</p>
  <p class="hint" id="be">EJEMPLO · datos de prueba</p></div>
 </section>
 <section id="v-stall" class="view" hidden>
@@ -18,7 +20,7 @@
 </section>
 <section id="v-owner" class="view" hidden>
  <h2>CONECTAR MI HOJA</h2><div id="hoja"><p id="hoja-est" class="hint2"></p><input id="hoja-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"><p id="hoja-msg" class="msg" hidden></p><div class="row2"><button id="hoja-ok" class="blk green">GUARDAR Y PROBAR</button><button id="hoja-off" class="blk red">DESCONECTAR</button></div></div>
- <h2 class="owner-head">DUEÑO <span id="owner-pin" class="owner-pin" aria-live="polite">PIN P1 · …</span></h2>
+ <h2>DUEÑO</h2>
  <label class="row">Aviso stock bajo ≤ <input id="thr" type="number" min="0" max="99" value="3"></label>
  <div class="tabs" id="stall-tabs"></div><div id="stock-list"></div>
  <h2>GESTIÓN</h2><div class="tabs" id="adm-tabs"><button class="blk" data-t="figuras">Figuras</button><button class="blk" data-t="puestos">Puestos</button><button class="blk" data-t="vendedores">Vendedores</button><button class="blk" data-t="stock">Mover stock</button></div>
@@ -29,5 +31,5 @@
  <h2>VENTAS DE HOY</h2><div id="sales"></div><button id="refresh" class="blk blue">ACTUALIZAR</button>
 </section>
 </main>
-<script src="db.js?v=19"></script><script src="api.js?v=19"></script><script src="app.js?v=19"></script>
+<script src="db.js?v=21"></script><script src="api.js?v=21"></script><script src="app.js?v=21"></script>
 </body></html>
