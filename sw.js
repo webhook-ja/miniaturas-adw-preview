@@ -1,4 +1,4 @@
-const V='miniaturas-v16',SHELL=['./','index.html','style.css?v=16','app.js?v=16','api.js?v=16','db.js?v=16','manifest.json','fonts/px.woff2?v=16','icons/icon.svg','icons/icon-192.png','icons/icon-512.png'];
+const V='miniaturas-v17',SHELL=['./','index.html','style.css?v=17','app.js?v=17','api.js?v=17','db.js?v=17','manifest.json','fonts/px.woff2?v=17','icons/icon.svg','icons/icon-192.png','icons/icon-512.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(V).then(c=>c.addAll(SHELL.map(u=>new Request(u,{cache:'reload'})))).then(()=>self.skipWaiting())));
 self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(k=>{const old=k.filter(x=>x!==V&&x.startsWith('miniaturas-'));return Promise.all(old.map(x=>caches.delete(x))).then(()=>self.clients.claim()).then(()=>old.length&&self.clients.matchAll({type:'window'}).then(cs=>cs.forEach(c=>c.navigate(c.url).catch(()=>{}))))})));
 self.addEventListener('fetch',e=>{const u=new URL(e.request.url);if(e.request.method!=='GET'||u.origin!==location.origin)return;

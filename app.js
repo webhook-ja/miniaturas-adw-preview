@@ -193,8 +193,14 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
  if(a==='ven-mov'){v=await form('Mover a '+ve.nombre,[{l:'Puesto destino',n:'puesto_destino',op:PO.filter(p=>p[0]!==ve.puesto)}],'Mover');if(v)r=await admCall('vendedor_mover',{vendedor_id:ve.id,...v})}
  if(a==='stk-mov'){const pr=adm.figuras.filter(f=>f.activo).map(f=>[f.id,f.nombre]);v=await form('Mover stock',[{l:'Figura',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO},{l:'Hasta',n:'hasta',op:PO,v:PO[1]?.[0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
   if(v){r=await admCall('stock_mover',{...v,cantidad:+v.cantidad});if(r.ok)alert('Movido. Quedan en origen: '+r.desde.find(s=>s.producto===v.producto).quedan)}}
- if(a.endsWith('-del'))r=await admCall({fig:'figura_borrar',pue:'puesto_borrar',ven:'vendedor_borrar'}[a.slice(0,3)],{id});
- if(r&&!r.ok){const E={PUESTO_CON_VENDEDORES:'Este puesto aún tiene vendedores activos. Muévelos o bórralos antes (o actualiza el backend a gas-v4e con borrado en cascada).',PUESTO_INVALIDO:'Puesto no encontrado.',VENDEDOR_DESCONOCIDO:'Vendedor no encontrado.',DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos.',DEMO_MAX_VENDEDORES:'Demo: máximo 3 vendedores.'};return alert(E[r.error]||('Error: '+r.error))}
+ if(a.endsWith('-del')){const acc={fig:'figura_borrar',pue:'puesto_borrar',ven:'vendedor_borrar'}[a.slice(0,3)];
+  r=await admCall(acc,{id});
+  /* gas-v4c blocks puesto_borrar while vendors remain — cascade client-side so Borrar always works. */
+  if(a==='pue-del'&&r&&!r.ok&&r.error==='PUESTO_CON_VENDEDORES'){
+   const vend=(adm.vendedores||[]).filter(v=>v.activo&&String(v.puesto)===String(id));
+   for(const ve of vend){const q=await admCall('vendedor_borrar',{id:ve.id});if(!q.ok){r=q;break}}
+   if(!r||r.error==='PUESTO_CON_VENDEDORES')r=await admCall('puesto_borrar',{id})}}
+ if(r&&!r.ok){const E={PUESTO_CON_VENDEDORES:'Este puesto aún tiene vendedores activos. Muévelos o bórralos antes.',PUESTO_INVALIDO:'Puesto no encontrado.',VENDEDOR_DESCONOCIDO:'Vendedor no encontrado.',DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos.',DEMO_MAX_VENDEDORES:'Demo: máximo 3 vendedores.'};return alert(E[r.error]||('Error: '+r.error))}
  if(r){await admLoad();loadOwner();if(typeof loadControl==='function')loadControl()}}catch(err){if(err!==0)alert('Error: '+(err&&err.message||err))}})};
 /* ---- Conectar mi hoja (v8): guarda la URL /exec en localStorage 'api_url' (la misma que ?api) ---- */
 const EXEC=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{10,}\/exec\/?$/,DEV=/^http:\/\/(127\.0\.0\.1|localhost):\d+\/exec$/;
@@ -213,5 +219,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=16',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='16')return;sessionStorage.setItem('sw_reload','16');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=17',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='17')return;sessionStorage.setItem('sw_reload','17');location.reload()})}
