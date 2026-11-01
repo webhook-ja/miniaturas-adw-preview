@@ -63,7 +63,12 @@ async function askRestockJustify(nombre){
   {l:'¿Es una devolución o un error?',n:'tipo',op:[['devolucion','Devolución'],['error','Me equivoqué']]},
   {l:'Detalle del error / devolución',n:'detalle',t:'text',v:''}
  ],'Continuar');
-  queueMicrotask(()=>{$('#dlg-m').textContent='Obligatorio antes de sumar stock.'});
+  queueMicrotask(()=>{
+   $('#dlg-m').textContent='Obligatorio antes de sumar stock.';
+   const okb=$('#dlg-ok'),inp=$('#dlg-c input[name="detalle"]');
+   if(!okb||!inp)return;const gate=()=>{okb.disabled=inp.value.trim().length<3};
+   gate();inp.addEventListener('input',gate);inp.focus();
+  });
   const v=await fp;if(!v)return null;
   const tipo=v.tipo==='devolucion'?'devolucion':'error',detalle=String(v.detalle||'').trim();
   if(detalle.length<3){alert('Escribe el detalle (mín. 3 caracteres).');continue}
