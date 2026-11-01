@@ -1,4 +1,5 @@
-const $=s=>document.querySelector(s);const st={ses:null,prods:[],stock:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null};
+const $=s=>document.querySelector(s);const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const st={ses:null,prods:[],stock:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null};
 const thr=()=>+(localStorage.getItem('umbral')??3);
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
 let ac;function pop(up){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime;
@@ -21,7 +22,7 @@ async function doLogin(){$('#login-msg').textContent='';const who=$('#who').valu
  if(!r.ok)return $('#login-msg').textContent=ERR[r.error]||r.error;
  saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre});start()}
  catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}}
-function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');loadStall();sync()}else{show('owner');loadOwner()}}
+function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');loadStall();sync()}else{show('owner');loadOwner();loadControl()}}
 $('#logout').onclick=()=>{borrarPines();saveSes(null);$('#undo').hidden=true;show('login')};
 function tokenMalo(r){if(['TOKEN_INVALIDO','TOKEN_CADUCADO','VENDEDOR_INACTIVO'].includes(r.error)){/* la cola NO se borra */saveSes(null);show('login');$('#login-msg').textContent='Sesión caducada: vuelve a meter el PIN (las ventas pendientes se conservan)';return true}}
 /* ---- Puesto ---- */
@@ -61,7 +62,7 @@ addEventListener('online',()=>{st.fallos=0;updPend();sync()});addEventListener('
 document.addEventListener('visibilitychange',()=>{
  if(document.hidden){borrarPines();return}
  sync();
- if(st.ses&&st.ses.rol==='dueno'){if(!adm)admLoad();loadOwner()}
+ if(st.ses&&st.ses.rol==='dueno'){if(!adm)admLoad();loadOwner();loadControl()}
 });
 /* ---- Dueño ---- */
 $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);renderGrid()};
@@ -96,7 +97,19 @@ async function adj(producto,n,row){pop(n>0);if(n<0)return;if(row&&row.dataset.bu
  catch(e){alert('Sin conexión al guardar stock');await loadOwner()}
  finally{if(row){row.dataset.busy='';row.querySelectorAll('button').forEach(b=>b.disabled=false)}}
 }
-$('#refresh').onclick=()=>loadOwner();
+$('#refresh').onclick=()=>{loadOwner();loadControl()};
+async function loadControl(){if(!st.ses||st.ses.rol!=='dueno')return;const box=$('#control');if(!box)return;box.innerHTML='<p class="msg">Cargando control…</p>';
+ try{const r=await API.controlDueno(st.ses.token_dueno);if(!r.ok){if(tokenMalo(r))return;box.innerHTML='<p class="msg">'+esc(r.error||'Error')+'</p>';return}
+  const live=r.en_vivo||{},tot=live.totales||{};
+  let h=`<p class="hint2">Hoy ${esc(r.fecha)} · en vivo: ${tot.vendidas||0} vendidas · ${tot.deshechas||0} deshechas</p>`;
+  h+='<table><tr><th>Puesto ahora</th><th>Vend.</th><th>Desh.</th><th>Neto</th><th>€</th></tr>'+(live.por_puesto||[]).map(x=>`<tr><td>${esc(x.nombre||x.puesto)}</td><td class="n">${x.vendidas}</td><td class="n">${x.deshechas}</td><td class="n">${x.neto}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
+  h+='<table><tr><th>Vendedor ahora</th><th>Activo en</th><th>Vend.</th><th>Desh.</th><th>Neto</th><th>€</th></tr>'+(live.por_vendedor||[]).map(x=>`<tr><td>${esc(x.nombre||x.vendedor)}</td><td>${esc(x.puesto_activo||'—')}</td><td class="n">${x.vendidas}</td><td class="n">${x.deshechas}</td><td class="n">${x.neto}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
+  h+='<h3 class="sub">Por vendedor</h3>';
+  (r.vendedores||[]).forEach(v=>{
+   const hist=(v.historial_puestos||[]).map(p=>`${esc(p.nombre||p.puesto)}×${p.veces||0}`).join(', ')||'—';
+   h+=`<div class="line"><span class="nm"><b>${esc(v.nombre)}</b> · activo ${esc(v.puesto_activo||'—')}<br><span class="hint2">Puestos: ${hist}</span><br>Hoy ${v.hoy?.vendidas||0} vend. / ${v.hoy?.deshechas||0} desh. · Total ${v.total?.vendidas||0} / ${v.total?.deshechas||0}</span></div>`;
+  });
+  box.innerHTML=h}catch(e){box.innerHTML='<p class="msg">Sin conexión al control</p>'}}
 /* ---- Puestos y PIN (solo dueño, solo en memoria) ---- */
 async function verPines(){if(!st.ses||st.ses.rol!=='dueno')return;const r=await API.pinesVer(st.ses.token_dueno).catch(e=>({ok:false,error:'Sin conexión'}));
  if(!r.ok){if(tokenMalo(r))return;$('#pines').innerHTML='<p class="msg"></p>';$('#pines .msg').textContent=r.error;return}pines=r.pines;pintarPines()}
@@ -110,7 +123,7 @@ function pintarPines(){const P=$('#pines');P.innerHTML='';const con=new Set((pin
   const r=await API.pinCambiar(st.ses.token_dueno,x.puesto,x.vendedor||undefined).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok)return alert(r.error);x.pin=r.pin;x.vendedor=r.vendedor;if(r.nombre)x.nombre=r.nombre;pintarPines()};P.append(d)})}
 $('#pines-ver').onclick=verPines;
 /* ---- Gestión (CRUD dueño, borrado lógico). Datos solo en memoria. ---- */
-var adm=null,admTab='figuras';const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+var adm=null,admTab='figuras';
 async function admCall(accion,extra){const r=await API.admin(accion,st.ses.token_dueno,extra).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok&&tokenMalo(r))throw 0;return r}
 async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;admPaint()}
 function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$('#dlg');
@@ -146,7 +159,7 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
    if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;try{await verPines()}catch(_){}}
   pin=null;r={ok:true}}
  if(a==='pue-new'||a==='pue-ed'){v=await form(pu?'Editar puesto':'Nuevo puesto',[{l:'Nombre',n:'nombre',v:pu?.nombre}]);if(v)r=await admCall('puesto_guardar',{puesto:{...(pu?{id:pu.id}:{}),...v}})}
- if(a==='ven-new'||a==='ven-ed'){v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve?.nombre},{l:'Email',n:'email',t:'email',o:1,v:ve?.email||''},{l:'Puesto',n:'puesto',op:PO,v:ve?.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
+ if(a==='ven-new'||a==='ven-ed'){v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve?.nombre},{l:'Email',n:'email',t:'email',o:1,v:ve?.email||''},{l:'Puesto activo (cambia al entrar en otro)',n:'puesto',op:PO,v:ve?.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
   if(v){const pinAcc=v.pin_acc;delete v.pin_acc;r=await admCall('vendedor_guardar',{vendedor:{...(ve?{id:ve.id}:{}),...v}});if(r.ok&&r.pin)alert('PIN del nuevo vendedor (apúntalo, no se guarda aquí): '+r.pin);if(r&&r.ok&&pinAcc==='cambiar'&&ve){const q=await admCall('pin_crear_o_cambiar',{puesto:v.puesto||ve.puesto,vendedor_id:ve.id});if(!q.ok)alert('Error PIN: '+q.error);else{alert('PIN nuevo: '+q.pin);await verPines()}}}}
  if(a==='ven-mov'){v=await form('Mover a '+ve.nombre,[{l:'Puesto destino',n:'puesto_destino',op:PO.filter(p=>p[0]!==ve.puesto)}],'Mover');if(v)r=await admCall('vendedor_mover',{vendedor_id:ve.id,...v})}
  if(a==='stk-mov'){const pr=adm.figuras.filter(f=>f.activo).map(f=>[f.id,f.nombre]);v=await form('Mover stock',[{l:'Figura',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO},{l:'Hasta',n:'hasta',op:PO,v:PO[1]?.[0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
@@ -171,5 +184,5 @@ $('#hoja-ok').onclick=async()=>{const u=$('#hoja-url').value.trim();
 $('#hoja-off').onclick=async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);hojaCambio()};
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=12',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='12')return;sessionStorage.setItem('sw_reload','12');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=13',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='13')return;sessionStorage.setItem('sw_reload','13');location.reload()})}
