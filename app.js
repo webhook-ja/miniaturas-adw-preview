@@ -4,7 +4,7 @@ const uuid=()=>crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-10
 let ac;function pop(up){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime;
  o.type='square';o.frequency.setValueAtTime(up?300:900,t);o.frequency.exponentialRampToValueAtTime(up?900:180,t+.09);
  g.gain.setValueAtTime(.25,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.connect(g).connect(ac.destination);o.start(t);o.stop(t+.13)}catch(e){}}
-let pines=null,ownerGen=0,adjBusy=false;
+let pines=null,ownerGen=0;
 function borrarPines(){pines=null;const e=document.getElementById('pines');if(e)e.innerHTML=''}
 function clearAdm(){adm=null;const m=document.getElementById('adm');if(m)m.innerHTML=''}
 function show(v){borrarPines();if(v==='login')clearAdm();document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!=='v-'+v);$('#logout').hidden=v==='login'}
@@ -66,7 +66,7 @@ $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.tar
 function paintStallTabs(puestos,sel){
  const t=$('#stall-tabs');t.innerHTML='';
  puestos.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='blk'+(p===sel?' sel':'');b.textContent='Puesto '+p;
-  b.onclick=()=>{if(st.ownerStall===p||adjBusy)return;st.ownerStall=p;paintStallTabs(puestos,p);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner()};t.append(b)});
+  b.onclick=()=>{if(st.ownerStall===p)return;st.ownerStall=p;paintStallTabs(puestos,p);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner()};t.append(b)});
 }
 async function loadOwner(){if(!st.ses||st.ses.rol!=='dueno')return;const T=st.ses.token_dueno;const gen=++ownerGen;if(!adm)admLoad();
  try{const e=await API.estadoDueno(T);if(gen!==ownerGen)return;if(!e.ok){if(tokenMalo(e))return;throw new Error(e.error)}
@@ -76,17 +76,23 @@ async function loadOwner(){if(!st.ses||st.ses.rol!=='dueno')return;const T=st.se
  (e.stock[st.ownerStall]||[]).forEach(([producto,ini,vend,quedan])=>{const p=names[producto]||{nombre:producto},d=document.createElement('div');d.className='line';
   d.innerHTML=`<span class="nm"></span><button type="button" class="blk red">−</button><span class="n">${ini}</span><button type="button" class="blk green">+</button>`;
   d.querySelector('.nm').textContent=p.nombre+(p.activo===0?' (inactivo)':'')+' · vendidas '+vend+' · quedan '+quedan;const[m,pl]=d.querySelectorAll('button');
-  m.onclick=()=>adj(producto,ini-1,d);pl.onclick=()=>adj(producto,ini+1,d);L.append(d)});
+  m.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur-1,d)};
+  pl.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur+1,d)};L.append(d)});
+ if(!L.children.length)L.innerHTML='<p class="msg">Sin stock en este puesto. Usa + en otro puesto o Mover stock.</p>';
  const h=await API.ventasHoy(T);if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
  const nm=k=>(names[k]||{nombre:k}).nombre;
  $('#sales').innerHTML=`<table><tr><th>Hoy ${h.fecha}</th><th>Uds</th><th>€</th><th>Benef.</th></tr><tr><td>TOTAL</td><td class="n">${h.totales.unidades}</td><td class="n">${h.totales.importe}</td><td class="n">${h.totales.beneficio}</td></tr></table>`+
   '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${pu}</td><td>${nm(pr)}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
   '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${x.puesto} · ${x.vendedor}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
 }catch(e){if(gen!==ownerGen)return;$('#sales').innerHTML='<p class="msg">Sin conexión o error: '+(e&&e.message||e)+'</p>'}}
-async function adj(producto,n,row){pop(n>0);if(n<0||adjBusy)return;adjBusy=true;
- if(row){const num=row.querySelector('.n');if(num)num.textContent=String(n);row.querySelectorAll('button').forEach(b=>b.disabled=true)}
- try{const r=await API.stockGuardar(st.ses.token_dueno,st.ownerStall,[{producto,cantidad_inicial:n}]);if(!r.ok){alert(r.error||'No se pudo guardar stock');await loadOwner();return}await loadOwner()}
- catch(e){alert('Sin conexión al guardar stock');await loadOwner()}finally{adjBusy=false}}
+async function adj(producto,n,row){pop(n>0);if(n<0)return;if(row&&row.dataset.busy==='1')return;
+ if(row){row.dataset.busy='1';const num=row.querySelector('.n');if(num)num.textContent=String(n);row.querySelectorAll('button').forEach(b=>b.disabled=true)}
+ try{const r=await API.stockGuardar(st.ses.token_dueno,st.ownerStall,[{producto,cantidad_inicial:n}]);
+  if(!r.ok){alert(r.error||'No se pudo guardar stock');await loadOwner();return}
+  await loadOwner()}
+ catch(e){alert('Sin conexión al guardar stock');await loadOwner()}
+ finally{if(row){row.dataset.busy='';row.querySelectorAll('button').forEach(b=>b.disabled=false)}}
+}
 $('#refresh').onclick=()=>loadOwner();
 /* ---- Puestos y PIN (solo dueño, solo en memoria) ---- */
 async function verPines(){if(!st.ses||st.ses.rol!=='dueno')return;const r=await API.pinesVer(st.ses.token_dueno).catch(e=>({ok:false,error:'Sin conexión'}));
@@ -130,10 +136,11 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
  if(a==='fig-new'||a==='fig-ed'){v=await form(fig?'Editar figura':'Nueva figura',[{l:'Nombre',n:'nombre',v:fig?.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?.precio??''},{l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?.coste??0},{l:'Color',n:'color_icono',t:'color',v:fig?.color_icono||'#7a9cc6'},{l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:fig?.foto_url||''}]);
   if(v){if(!v.foto_url)delete v.foto_url;r=await admCall('figura_guardar',{figura:{...(fig?{id:fig.id}:{}),...v}})}}
  if(a==='pue-alta'){const N=1+Math.max(0,...adm.puestos.map(p=>+p.id.slice(1)||0));r=await admCall('puesto_guardar',{puesto:{nombre:'Puesto '+N}});if(!r.ok)return alert('Error: '+r.error);const np=r.puesto;
-  r=await admCall('vendedor_guardar',{vendedor:{nombre:'Vendedor '+np.nombre,puesto:np.id}});if(!r.ok){await admLoad();return alert('Puesto creado, pero falta el vendedor: '+r.error)}const nv=r.vendedor;let pin=r.pin;r=null;await admLoad();loadOwner();await verPines();
-  for(;;){const pr=form('Editar '+np.id,[{l:'Nombre del puesto',n:'nombre',v:np.nombre},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);$('#dlg-m').textContent='PIN de '+nv.nombre+': '+pin+' (no se guarda en el dispositivo)';v=await pr;if(!v)break;
+  r=await admCall('vendedor_guardar',{vendedor:{nombre:'Vendedor '+np.nombre,puesto:np.id}});if(!r.ok){await admLoad();return alert('Puesto creado, pero falta el vendedor: '+r.error)}const nv=r.vendedor;let pin=r.pin;r=null;await admLoad();loadOwner();
+  try{await verPines()}catch(_){ }
+  for(;;){const pr=form('Editar '+np.id,[{l:'Nombre del puesto',n:'nombre',v:np.nombre},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);$('#dlg-m').textContent='PIN de '+nv.nombre+': '+(pin||'—')+' (apúntalo; no se guarda en el dispositivo)';v=await pr;if(!v)break;
    if(v.nombre!==np.nombre){const q=await admCall('puesto_guardar',{puesto:{id:np.id,nombre:v.nombre}});if(!q.ok){alert('Error: '+q.error);break}np.nombre=v.nombre}
-   if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;await verPines()}
+   if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;try{await verPines()}catch(_){}}
   pin=null;r={ok:true}}
  if(a==='pue-new'||a==='pue-ed'){v=await form(pu?'Editar puesto':'Nuevo puesto',[{l:'Nombre',n:'nombre',v:pu?.nombre}]);if(v)r=await admCall('puesto_guardar',{puesto:{...(pu?{id:pu.id}:{}),...v}})}
  if(a==='ven-new'||a==='ven-ed'){v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve?.nombre},{l:'Email',n:'email',t:'email',o:1,v:ve?.email||''},{l:'Puesto',n:'puesto',op:PO,v:ve?.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
