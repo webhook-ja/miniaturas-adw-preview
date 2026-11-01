@@ -74,28 +74,43 @@ $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.tar
 function paintStallTabs(puestos,sel){
  const t=$('#stall-tabs');t.innerHTML='';
  puestos.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='blk'+(p===sel?' sel':'');b.textContent='Puesto '+p;
-  b.onclick=()=>{if(st.ownerStall===p)return;st.ownerStall=p;paintStallTabs(puestos,p);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner()};t.append(b)});
+  b.onclick=()=>{if(st.ownerStall===p)return;st.ownerStall=p;paintStallTabs(puestos,p);paintStallPin();$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner()};t.append(b)});
 }
+/* Demo/test: show selected puesto PIN in plain text for the dueño. */
+async function ensurePines(){if(pines&&pines.length)return pines;if(!st.ses||st.ses.rol!=='dueno')return null;
+ const r=await API.pinesVer(st.ses.token_dueno).catch(()=>({ok:false}));if(!r.ok){if(tokenMalo(r))return null;return null}
+ pines=r.pines||[];return pines}
+async function paintStallPin(){const el=$('#stall-pin');if(!el)return;
+ const p=st.ownerStall;if(!p){el.hidden=true;el.textContent='';return}
+ el.hidden=false;el.textContent='Puesto '+p+' · PIN …';
+ const list=await ensurePines();if(st.ownerStall!==p)return;
+ if(!list){el.textContent='Puesto '+p+' · PIN no disponible';return}
+ const m=(list||[]).filter(x=>String(x.puesto)===String(p)&&x.pin);
+ if(!m.length){el.textContent='Puesto '+p+' · sin PIN (crea uno abajo en PUESTOS Y PIN)';return}
+ if(m.length===1){el.innerHTML='Puesto <b>'+esc(p)+'</b> · PIN <span class="pin">'+esc(m[0].pin)+'</span>'+(m[0].nombre?' · '+esc(m[0].nombre):'');return}
+ el.innerHTML='Puesto <b>'+esc(p)+'</b> · PINs: '+m.map(x=>'<span class="pin">'+esc(x.pin)+'</span>'+(x.nombre?' ('+esc(x.nombre)+')':'')).join(' · ')}
+
 const stockPend={},stockTimers={},stockSaving={};
 function stockKey(puesto,producto){return puesto+'|'+producto}
 function paintStockRow(row,nombre,activo,ini,vend){const quedan=Math.max(0,ini-vend);row.dataset.ini=String(ini);row.dataset.vend=String(vend);
  const num=row.querySelector('.n');if(num)num.textContent=String(ini);
  const nm=row.querySelector('.nm');if(nm)nm.textContent=nombre+(activo===0?' (inactivo)':'')+' · vendidas '+vend+' · quedan '+quedan}
-async function flushStock(key){const p=stockPend[key];if(!p||stockSaving[key])return;stockSaving[key]=1;delete stockPend[key];clearTimeout(stockTimers[key]);delete stockTimers[key];
+async function flushStock(key){const p=stockPend[key];if(!p||stockSaving[key])return;stockSaving[key]=1;delete stockPend[key];clearTimeout(stockTimers[key]);delete stockTimers[key];clearTimeout(stockSlow[key]);delete stockSlow[key];
  try{const r=await API.stockGuardar(st.ses.token_dueno,p.puesto,[{producto:p.producto,cantidad_inicial:p.n}]);
   if(!r.ok){alert(r.error||'No se pudo guardar stock');await loadOwner(true);return}
-  if(p.row&&p.row.isConnected&&st.ownerStall===p.puesto){paintStockRow(p.row,p.nombre,p.activo,p.n,+p.row.dataset.vend||0);p.row.classList.remove('stock-pend')}}
+  if(p.row&&p.row.isConnected&&st.ownerStall===p.puesto){paintStockRow(p.row,p.nombre,p.activo,p.n,+(p.row.dataset.vend||0));p.row.classList.remove('stock-pend')}}
  catch(e){alert('Sin conexión al guardar stock');await loadOwner(true)}
  finally{delete stockSaving[key];if(stockPend[key])flushStock(key);else if(p.row)p.row.classList.remove('stock-pend')}}
-async function flushAllStock(){Object.keys(stockTimers).forEach(k=>{clearTimeout(stockTimers[k]);delete stockTimers[k]});
+async function flushAllStock(){Object.keys(stockTimers).forEach(k=>{clearTimeout(stockTimers[k]);delete stockTimers[k]});Object.keys(stockSlow).forEach(k=>{clearTimeout(stockSlow[k]);delete stockSlow[k]});
  const keys=new Set([...Object.keys(stockPend),...Object.keys(stockSaving)]);await Promise.all([...keys].map(k=>flushStock(k)));
  while(Object.keys(stockSaving).length||Object.keys(stockPend).length)await new Promise(r=>setTimeout(r,40))}
 async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!skipFlush)await flushAllStock();const T=st.ses.token_dueno;const gen=++ownerGen;if(!adm)admLoad();
  try{const e=await API.estadoDueno(T);if(gen!==ownerGen)return;if(!e.ok){if(tokenMalo(e))return;throw new Error(e.error)}
  st.puestosDueno=e.puestos;st.ownerStall=e.puestos.includes(st.ownerStall)?st.ownerStall:e.puestos[0];
  await purgeOrphanQueue(e.puestos);updPend();
- paintStallTabs(e.puestos,st.ownerStall);
+ paintStallTabs(e.puestos,st.ownerStall);paintStallPin();
  const names=Object.fromEntries(e.productos.map(p=>[p[0],{nombre:p[1],activo:p[4]}])),L=$('#stock-list');L.innerHTML='';
+
  (e.stock[st.ownerStall]||[]).forEach(([producto,ini,vend,quedan])=>{const p=names[producto]||{nombre:producto},d=document.createElement('div');d.className='line';
   d.innerHTML=`<span class="nm"></span><button type="button" class="blk red">−</button><span class="n">${ini}</span><button type="button" class="blk green">+</button>`;
   paintStockRow(d,p.nombre,p.activo,ini,vend);const[m,pl]=d.querySelectorAll('button');
@@ -108,12 +123,16 @@ async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!
   '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${pu}</td><td>${nm(pr)}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
   '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${x.puesto} · ${x.vendedor}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
 }catch(e){if(gen!==ownerGen)return;$('#sales').innerHTML='<p class="msg">Sin conexión o error: '+(e&&e.message||e)+'</p>'}}
+const stockSlow={};
 function adj(producto,n,row,meta){if(n<0)return;pop(n>+(row.dataset.ini||0));
- const vend=+(row.dataset.vend||0),nombre=(meta&&meta.nombre)||row.querySelector('.nm')?.textContent?.split(' ·')[0]||producto,activo=meta?meta.activo:1;
- paintStockRow(row,nombre,activo,n,vend);row.classList.add('stock-pend');
+ const vend=+(row.dataset.vend||0),nmEl=row.querySelector('.nm'),nombre=(meta&&meta.nombre)||(nmEl&&String(nmEl.textContent||'').split(' ·')[0])||producto,activo=meta?meta.activo:1;
+ paintStockRow(row,nombre,activo,n,vend);
+ const num=row.querySelector('.n');if(num){num.classList.remove('flash');void num.offsetWidth;num.classList.add('flash')}
  const puesto=st.ownerStall,key=stockKey(puesto,producto);
- stockPend[key]={producto,n,row,puesto,nombre,activo};clearTimeout(stockTimers[key]);
- stockTimers[key]=setTimeout(()=>flushStock(key),380)}
+ stockPend[key]={producto,n,row,puesto,nombre,activo};clearTimeout(stockTimers[key]);clearTimeout(stockSlow[key]);
+ /* Debounce save; only show "saving" spinner if GAS is still slow after 1s — never block the buttons. */
+ stockTimers[key]=setTimeout(()=>flushStock(key),550);
+ stockSlow[key]=setTimeout(()=>{if(stockPend[key]||stockSaving[key])row.classList.add('stock-pend')},1000)}
 $('#refresh').onclick=()=>withBusy($('#refresh'),async()=>{await loadOwner();await loadControl()});
 async function loadControl(){if(!st.ses||st.ses.rol!=='dueno')return;const box=$('#control');if(!box)return;box.innerHTML='<p class="msg">Cargando control…</p>';
  try{const r=await API.controlDueno(st.ses.token_dueno);if(!r.ok){if(tokenMalo(r))return;box.innerHTML='<p class="msg">'+esc(r.error||'Error')+'</p>';return}
@@ -129,7 +148,8 @@ async function loadControl(){if(!st.ses||st.ses.rol!=='dueno')return;const box=$
   box.innerHTML=h}catch(e){box.innerHTML='<p class="msg">Sin conexión al control</p>'}}
 /* ---- Puestos y PIN (solo dueño, solo en memoria) ---- */
 async function verPines(){if(!st.ses||st.ses.rol!=='dueno')return;const r=await API.pinesVer(st.ses.token_dueno).catch(e=>({ok:false,error:'Sin conexión'}));
- if(!r.ok){if(tokenMalo(r))return;$('#pines').innerHTML='<p class="msg"></p>';$('#pines .msg').textContent=r.error;return}pines=r.pines;pintarPines()}
+ if(!r.ok){if(tokenMalo(r))return;$('#pines').innerHTML='<p class="msg"></p>';$('#pines .msg').textContent=r.error;return}pines=r.pines;pintarPines();paintStallPin()}
+
 function pintarPines(){const P=$('#pines');P.innerHTML='';const con=new Set((pines||[]).map(x=>x.puesto));
  (st.puestosDueno||[]).filter(p=>!con.has(p)).forEach(p=>pines.push({puesto:p,vendedor:'',pin:''}));pines.sort((a,b)=>a.puesto.localeCompare(b.puesto));
  (pines||[]).forEach((x,i)=>{const d=document.createElement('div');d.className='line';
@@ -137,7 +157,7 @@ function pintarPines(){const P=$('#pines');P.innerHTML='';const con=new Set((pin
  d.querySelector('.nm').textContent=`Puesto ${i+1} (${x.puesto}) · ${x.nombre||('vendedor '+x.vendedor)}${x.ejemplo?' · EJEMPLO':''}`;d.querySelector('.pin').textContent=x.pin||'— sin PIN guardado —';if(!x.pin)d.querySelector('button').hidden=true;
  const[cp,ch]=d.querySelectorAll('button');cp.onclick=async()=>{try{await navigator.clipboard.writeText(x.pin);cp.textContent='¡Copiado!'}catch(e){cp.textContent='No se pudo'}setTimeout(()=>cp.textContent='Copiar',1500)};
  ch.onclick=()=>withBusy(ch,async()=>{if(!confirm('¿Generar un PIN nuevo de 6 cifras para '+x.vendedor+' ('+x.puesto+')? El anterior dejará de valer.'))return;
-  const r=await API.pinCambiar(st.ses.token_dueno,x.puesto,x.vendedor||undefined).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok)return alert(r.error);x.pin=r.pin;x.vendedor=r.vendedor;if(r.nombre)x.nombre=r.nombre;pintarPines()});P.append(d)})}
+  const r=await API.pinCambiar(st.ses.token_dueno,x.puesto,x.vendedor||undefined).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok)return alert(r.error);x.pin=r.pin;x.vendedor=r.vendedor;if(r.nombre)x.nombre=r.nombre;pintarPines();paintStallPin()});P.append(d)})}
 $('#pines-ver').onclick=()=>withBusy($('#pines-ver'),verPines);
 /* ---- Gestión (CRUD dueño, borrado lógico). Datos solo en memoria. ---- */
 var adm=null,admTab='figuras';
@@ -164,44 +184,54 @@ function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.cla
   `<button class="blk sm" data-a="ven-ed" data-id="${v.id}">Editar</button><button class="blk sm blue" data-a="ven-mov" data-id="${v.id}">Mover</button><button class="blk sm red" data-a="ven-del" data-id="${v.id}">Borrar</button>`)).join('')}
  if(admTab==='stock'){h='<p class="hint2">Pasa unidades del stock inicial de un puesto a otro (no puede superar lo que queda).</p><button class="blk blue add" data-a="stk-mov">Mover stock entre puestos</button>'}
  A.innerHTML=h}
+function admMsg(t){let m=$('#adm-msg');if(!m){m=document.createElement('p');m.id='adm-msg';m.className='msg';const A=$('#adm');if(A)A.prepend(m)}m.textContent=t||'';m.hidden=!t}
 document.getElementById('adm-tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;admTab=t;adm?admPaint():admLoad()};
-document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b||b.classList.contains('busy'))return;const a=b.dataset.a,id=b.dataset.id;let r,v;
- /* Confirm deletes BEFORE busy lock — otherwise a cancelled/failed delete leaves the button feeling dead. */
+document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b||b.dataset.lock==='1')return;const a=b.dataset.a,id=b.dataset.id;let r,v;
  if(a.endsWith('-del')){if(!adm){await admLoad();if(!adm)return alert('No se pudo cargar la gestión')}
   const x=adm.figuras.find(y=>y.id===id)||adm.puestos.find(y=>y.id===id)||adm.vendedores.find(y=>y.id===id);if(!x)return alert('No se encontró el elemento');
   const msg=a==='pue-del'
    ?('¿Borrar el puesto «'+x.nombre+'»? Los vendedores con este puesto activo también se darán de baja (el historial no se pierde).')
    :('¿Borrar «'+x.nombre+'»? Se marcará como borrado (el historial no se pierde).');
   if(!confirm(msg))return}
- await withBusy(b,async()=>{try{
+ b.dataset.lock='1';
+ try{
  if(!adm){await admLoad();if(!adm)return alert('No se pudo cargar la gestión')}
  const fig=adm.figuras.find(x=>x.id===id),pu=adm.puestos.find(x=>x.id===id),ve=adm.vendedores.find(x=>x.id===id),PO=actP().map(p=>[p.id,p.nombre]);
- if(a==='fig-new'||a==='fig-ed'){v=await form(fig?'Editar figura':'Nueva figura',[{l:'Nombre',n:'nombre',v:fig?.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?.precio??''},{l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?.coste??0},{l:'Color',n:'color_icono',t:'color',v:fig?.color_icono||'#7a9cc6'},{l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:fig?.foto_url||''}]);
-  if(v){if(!v.foto_url)delete v.foto_url;r=await admCall('figura_guardar',{figura:{...(fig?{id:fig.id}:{}),...v}})}}
- if(a==='pue-alta'){if(adm.puestos.filter(p=>p.activo).length>=3)return alert('Demo: máximo 3 puestos');if(adm.vendedores.filter(v=>v.activo).length>=3)return alert('Demo: máximo 3 vendedores (el alta de puesto crea uno)');
-  const N=1+Math.max(0,...adm.puestos.map(p=>+p.id.slice(1)||0));r=await admCall('puesto_guardar',{puesto:{nombre:'Puesto '+N}});if(!r.ok)return alert(({DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos'}[r.error])||('Error: '+r.error));const np=r.puesto;
-  r=await admCall('vendedor_guardar',{vendedor:{nombre:'Vendedor '+np.nombre,puesto:np.id}});if(!r.ok){await admLoad();return alert('Puesto creado, pero falta el vendedor: '+r.error)}const nv=r.vendedor;let pin=r.pin;r=null;await admLoad();loadOwner();
-  try{await verPines()}catch(_){ }
-  for(;;){const pr=form('Editar '+np.id,[{l:'Nombre del puesto',n:'nombre',v:np.nombre},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);$('#dlg-m').textContent='PIN de '+nv.nombre+': '+(pin||'—')+' (apúntalo; no se guarda en el dispositivo)';v=await pr;if(!v)break;
-   if(v.nombre!==np.nombre){const q=await admCall('puesto_guardar',{puesto:{id:np.id,nombre:v.nombre}});if(!q.ok){alert('Error: '+q.error);break}np.nombre=v.nombre}
-   if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;try{await verPines()}catch(_){}}
-  pin=null;r={ok:true}}
- if(a==='pue-new'||a==='pue-ed'){v=await form(pu?'Editar puesto':'Nuevo puesto',[{l:'Nombre',n:'nombre',v:pu?.nombre}]);if(v)r=await admCall('puesto_guardar',{puesto:{...(pu?{id:pu.id}:{}),...v}})}
- if(a==='ven-new'||a==='ven-ed'){if(a==='ven-new'&&adm.vendedores.filter(v=>v.activo).length>=3)return alert('Demo: máximo 3 vendedores');
-  v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve?.nombre},{l:'Email',n:'email',t:'email',o:1,v:ve?.email||''},{l:'Puesto activo (cambia al entrar en otro)',n:'puesto',op:PO,v:ve?.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
-  if(v){const pinAcc=v.pin_acc;delete v.pin_acc;r=await admCall('vendedor_guardar',{vendedor:{...(ve?{id:ve.id}:{}),...v}});if(r.ok&&r.pin)alert('PIN del nuevo vendedor (apúntalo, no se guarda aquí): '+r.pin);if(r&&r.ok&&pinAcc==='cambiar'&&ve){const q=await admCall('pin_crear_o_cambiar',{puesto:v.puesto||ve.puesto,vendedor_id:ve.id});if(!q.ok)alert('Error PIN: '+q.error);else{alert('PIN nuevo: '+q.pin);await verPines()}}}}
- if(a==='ven-mov'){v=await form('Mover a '+ve.nombre,[{l:'Puesto destino',n:'puesto_destino',op:PO.filter(p=>p[0]!==ve.puesto)}],'Mover');if(v)r=await admCall('vendedor_mover',{vendedor_id:ve.id,...v})}
- if(a==='stk-mov'){const pr=adm.figuras.filter(f=>f.activo).map(f=>[f.id,f.nombre]);v=await form('Mover stock',[{l:'Figura',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO},{l:'Hasta',n:'hasta',op:PO,v:PO[1]?.[0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
-  if(v){r=await admCall('stock_mover',{...v,cantidad:+v.cantidad});if(r.ok)alert('Movido. Quedan en origen: '+r.desde.find(s=>s.producto===v.producto).quedan)}}
- if(a.endsWith('-del')){const acc={fig:'figura_borrar',pue:'puesto_borrar',ven:'vendedor_borrar'}[a.slice(0,3)];
+ const E={PUESTO_CON_VENDEDORES:'Este puesto aún tiene vendedores activos. Muévelos o bórralos antes.',PUESTO_INVALIDO:'Puesto no encontrado.',VENDEDOR_DESCONOCIDO:'Vendedor no encontrado.',DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos.',DEMO_MAX_VENDEDORES:'Demo: máximo 3 vendedores.'};
+ if(a==='fig-new'||a==='fig-ed'){v=await form(fig?'Editar figura':'Nueva figura',[{l:'Nombre',n:'nombre',v:fig&&fig.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?fig.precio:''},{l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?fig.coste:0},{l:'Color',n:'color_icono',t:'color',v:(fig&&fig.color_icono)||'#7a9cc6'},{l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:(fig&&fig.foto_url)||''}]);
+  if(v){if(!v.foto_url)delete v.foto_url;busyBtn(b,1);try{r=await admCall('figura_guardar',{figura:{...(fig?{id:fig.id}:{}),...v}})}finally{busyBtn(b,0)}}}
+ if(a==='pue-alta'){if(adm.puestos.filter(p=>p.activo).length>=3)return alert('Demo: máximo 3 puestos');
+  const atVend=adm.vendedores.filter(x=>x.activo).length>=3;
+  if(atVend&&!confirm('Ya hay 3 vendedores (máximo demo). ¿Crear el puesto sin vendedor nuevo?'))return;
+  admMsg('Creando puesto…');busyBtn(b,1);
+  try{const N=1+Math.max(0,...adm.puestos.map(p=>+String(p.id).slice(1)||0));r=await admCall('puesto_guardar',{puesto:{nombre:'Puesto '+N}});
+   if(!r.ok){admMsg('');return alert(E[r.error]||('Error: '+r.error))}const np=r.puesto;let nv=null,pin=null;
+   if(!atVend){r=await admCall('vendedor_guardar',{vendedor:{nombre:'Vendedor '+np.nombre,puesto:np.id}});if(!r.ok){await admLoad();admMsg('');return alert('Puesto creado, pero falta el vendedor: '+(E[r.error]||r.error))}nv=r.vendedor;pin=r.pin}
+   r=null;admMsg('');await admLoad();loadOwner();
+   try{await verPines()}catch(_){ }
+   busyBtn(b,0); /* unlock before dialog so the + button is not stuck for seconds */
+   if(nv){for(;;){const pr=form('Editar '+np.id,[{l:'Nombre del puesto',n:'nombre',v:np.nombre},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);$('#dlg-m').textContent='PIN de '+nv.nombre+': '+(pin||'—')+' (apúntalo; no se guarda en el dispositivo)';v=await pr;if(!v)break;
+    if(v.nombre!==np.nombre){const q=await admCall('puesto_guardar',{puesto:{id:np.id,nombre:v.nombre}});if(!q.ok){alert('Error: '+q.error);break}np.nombre=v.nombre}
+    if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;try{await verPines()}catch(_){}}}
+   else alert('Puesto «'+np.nombre+'» creado. Añade un vendedor cuando liberes cupo (máx. 3).');
+   pin=null;r={ok:true}}catch(err){admMsg('');throw err}finally{busyBtn(b,0)}}
+ if(a==='pue-new'||a==='pue-ed'){v=await form(pu?'Editar puesto':'Nuevo puesto',[{l:'Nombre',n:'nombre',v:pu&&pu.nombre}]);if(v){busyBtn(b,1);try{r=await admCall('puesto_guardar',{puesto:{...(pu?{id:pu.id}:{}),...v}})}finally{busyBtn(b,0)}}}
+ if(a==='ven-new'||a==='ven-ed'){if(a==='ven-new'&&adm.vendedores.filter(x=>x.activo).length>=3)return alert('Demo: máximo 3 vendedores');
+  v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve&&ve.nombre},{l:'Email',n:'email',t:'email',o:1,v:(ve&&ve.email)||''},{l:'Puesto activo (cambia al entrar en otro)',n:'puesto',op:PO,v:ve&&ve.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
+  if(v){const pinAcc=v.pin_acc;delete v.pin_acc;busyBtn(b,1);try{r=await admCall('vendedor_guardar',{vendedor:{...(ve?{id:ve.id}:{}),...v}});if(r.ok&&r.pin)alert('PIN del nuevo vendedor (apúntalo, no se guarda aquí): '+r.pin);if(r&&r.ok&&pinAcc==='cambiar'&&ve){const q=await admCall('pin_crear_o_cambiar',{puesto:v.puesto||ve.puesto,vendedor_id:ve.id});if(!q.ok)alert('Error PIN: '+q.error);else{alert('PIN nuevo: '+q.pin);await verPines()}}}finally{busyBtn(b,0)}}}
+ if(a==='ven-mov'){v=await form('Mover a '+ve.nombre,[{l:'Puesto destino',n:'puesto_destino',op:PO.filter(p=>p[0]!==ve.puesto)}],'Mover');if(v){busyBtn(b,1);try{r=await admCall('vendedor_mover',{vendedor_id:ve.id,...v})}finally{busyBtn(b,0)}}}
+ if(a==='stk-mov'){const pr=adm.figuras.filter(f=>f.activo).map(f=>[f.id,f.nombre]);v=await form('Mover stock',[{l:'Figura',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO},{l:'Hasta',n:'hasta',op:PO,v:PO[1]&&PO[1][0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
+  if(v){busyBtn(b,1);try{r=await admCall('stock_mover',{...v,cantidad:+v.cantidad});if(r.ok)alert('Movido. Quedan en origen: '+r.desde.find(s=>s.producto===v.producto).quedan)}finally{busyBtn(b,0)}}}
+ if(a.endsWith('-del')){busyBtn(b,1);try{const acc={fig:'figura_borrar',pue:'puesto_borrar',ven:'vendedor_borrar'}[a.slice(0,3)];
   r=await admCall(acc,{id});
-  /* gas-v4c blocks puesto_borrar while vendors remain — cascade client-side so Borrar always works. */
   if(a==='pue-del'&&r&&!r.ok&&r.error==='PUESTO_CON_VENDEDORES'){
-   const vend=(adm.vendedores||[]).filter(v=>v.activo&&String(v.puesto)===String(id));
-   for(const ve of vend){const q=await admCall('vendedor_borrar',{id:ve.id});if(!q.ok){r=q;break}}
-   if(!r||r.error==='PUESTO_CON_VENDEDORES')r=await admCall('puesto_borrar',{id})}}
- if(r&&!r.ok){const E={PUESTO_CON_VENDEDORES:'Este puesto aún tiene vendedores activos. Muévelos o bórralos antes.',PUESTO_INVALIDO:'Puesto no encontrado.',VENDEDOR_DESCONOCIDO:'Vendedor no encontrado.',DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos.',DEMO_MAX_VENDEDORES:'Demo: máximo 3 vendedores.'};return alert(E[r.error]||('Error: '+r.error))}
- if(r){await admLoad();loadOwner();if(typeof loadControl==='function')loadControl()}}catch(err){if(err!==0)alert('Error: '+(err&&err.message||err))}})};
+   const vend=(adm.vendedores||[]).filter(x=>x.activo&&String(x.puesto)===String(id));
+   for(const vx of vend){const q=await admCall('vendedor_borrar',{id:vx.id});if(!q.ok){r=q;break}}
+   if(!r||r.error==='PUESTO_CON_VENDEDORES')r=await admCall('puesto_borrar',{id})}}finally{busyBtn(b,0)}}
+ if(r&&!r.ok)return alert(E[r.error]||('Error: '+r.error));
+ if(r){await admLoad();loadOwner();if(typeof loadControl==='function')loadControl()}}
+ catch(err){if(err!==0)alert('Error: '+(err&&err.message||err))}
+ finally{delete b.dataset.lock;busyBtn(b,0);admMsg('')}};
 /* ---- Conectar mi hoja (v8): guarda la URL /exec en localStorage 'api_url' (la misma que ?api) ---- */
 const EXEC=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{10,}\/exec\/?$/,DEV=/^http:\/\/(127\.0\.0\.1|localhost):\d+\/exec$/;
 const COMO='Necesito la URL de la aplicación web, no la de la hoja. En tu hoja: Extensiones › Apps Script › Implementar › Nueva implementación › tipo «Aplicación web» (ejecutar como: yo; acceso: cualquiera) › Implementar › copia la URL que termina en /exec.';
@@ -219,5 +249,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=17',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='17')return;sessionStorage.setItem('sw_reload','17');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=18',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='18')return;sessionStorage.setItem('sw_reload','18');location.reload()})}
