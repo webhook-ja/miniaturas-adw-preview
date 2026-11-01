@@ -58,13 +58,25 @@ async function lastSaleOf(producto){const all=await QueueDB.all();
  const undone=new Set(mine.filter(e=>e.cantidad===1&&e.ref).map(e=>e.ref));
  for(const e of mine){if(e.cantidad===-1&&!undone.has(e.id))return e}
  if(st.undo&&st.undo.producto===producto&&!undone.has(st.undo.id))return st.undo;return null}
-async function restock(p){const tile=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(tile)tile.classList.add('busy');
- pop(true);try{const sale=await lastSaleOf(p.id);const e=sale?{...evento(p.id,1),ref:sale.id}:evento(p.id,1);
+async function askRestockJustify(nombre){
+ for(;;){const fp=form('Sumar 1 · '+nombre,[
+  {l:'¿Es una devolución o un error?',n:'tipo',op:[['devolucion','Devolución'],['error','Me equivoqué']]},
+  {l:'Detalle del error / devolución',n:'detalle',t:'text',v:''}
+ ],'Continuar');
+  queueMicrotask(()=>{$('#dlg-m').textContent='Obligatorio antes de sumar stock.'});
+  const v=await fp;if(!v)return null;
+  const tipo=v.tipo==='devolucion'?'devolucion':'error',detalle=String(v.detalle||'').trim();
+  if(detalle.length<3){alert('Escribe el detalle (mín. 3 caracteres).');continue}
+  return{justificacion_tipo:tipo,justificacion:detalle.slice(0,200)}}}
+async function restock(p){const j=await askRestockJustify(p.nombre);if(!j)return;
+ const tile=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(tile)tile.classList.add('busy');
+ pop(true);try{const sale=await lastSaleOf(p.id);const e={...(sale?{...evento(p.id,1),ref:sale.id}:evento(p.id,1)),...j};
   await QueueDB.add(e);if(sale&&st.undo&&st.undo.id===sale.id){st.undo=null;$('#undo').hidden=true}
   await renderGrid();updPend();sync()}finally{const t2=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(t2)t2.classList.remove('busy')}}
 function setUndo(e,p){st.undo=e;$('#undo-txt').textContent='−1 '+p.nombre;$('#undo').hidden=false;clearTimeout(st.ut);st.ut=setTimeout(()=>{$('#undo').hidden=true;st.undo=null},15000)}
-$('#undo-btn').onclick=async()=>{const v=st.undo;if(!v)return;st.undo=null;$('#undo').hidden=true;pop(true);
- await QueueDB.add({...evento(v.producto,1),ref:v.id});await renderGrid();updPend();sync()};
+$('#undo-btn').onclick=async()=>{const v=st.undo;if(!v)return;const prod=st.prods.find(x=>x.id===v.producto)||{nombre:v.producto};
+ const j=await askRestockJustify(prod.nombre);if(!j)return;st.undo=null;$('#undo').hidden=true;pop(true);
+ await QueueDB.add({...evento(v.producto,1),ref:v.id,...j});await renderGrid();updPend();sync()};
 /* ---- Sincronización: lotes ≤200, idempotente, backoff exponencial 2 s → 5 min ---- */
 function backoff(){st.fallos++;const ms=Math.min(2000*2**(st.fallos-1),300000);clearTimeout(st.bo);st.bo=setTimeout(sync,ms);return ms}
 async function sync(){if(st.syncing||!navigator.onLine||!st.ses||st.ses.rol!=='vendedor')return;st.syncing=true;try{

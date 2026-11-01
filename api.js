@@ -84,11 +84,14 @@ const API=(()=>{
    for(const v of q.ventas){const id=String(v&&v.id||'');if(!UUID4.test(id)){rechazadas.push({id,motivo:'ID_INVALIDO'});continue}if(vistos.has(id)){duplicadas.push(id);continue}
     const c=Number(v.cantidad);if(c!==-1&&c!==1){rechazadas.push({id,motivo:'CANTIDAD_INVALIDA'});continue}if(!(v.producto in precios)){rechazadas.push({id,motivo:'PRODUCTO_DESCONOCIDO'});continue}
     if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v.fecha_hora||'')){rechazadas.push({id,motivo:'FECHA_INVALIDA'});continue}
-    if(c===1&&v.ref){const o=d.ventas.find(r=>r.id===v.ref);
-     if(!o||o.cantidad!==-1||o.puesto!==t.p||o.producto!==v.producto){rechazadas.push({id,motivo:'REF_INVALIDA'});continue}
-     if(d.ventas.some(r=>r.ref_id===v.ref)){rechazadas.push({id,motivo:'REF_YA_DESHECHA'});continue}}
+    if(c===1){const jTipo=String(v.justificacion_tipo||''),jDet=String(v.justificacion||'').trim();
+     if(jTipo!=='devolucion'&&jTipo!=='error'){rechazadas.push({id,motivo:'JUSTIFICACION_REQUERIDA'});continue}
+     if(jDet.length<3){rechazadas.push({id,motivo:'JUSTIFICACION_REQUERIDA'});continue}
+     if(v.ref){const o=d.ventas.find(r=>r.id===v.ref);
+      if(!o||o.cantidad!==-1||o.puesto!==t.p||o.producto!==v.producto){rechazadas.push({id,motivo:'REF_INVALIDA'});continue}
+      if(d.ventas.some(r=>r.ref_id===v.ref)){rechazadas.push({id,motivo:'REF_YA_DESHECHA'});continue}}}
     if(!d.productos.find(p=>p.id===v.producto).activo)marcadas.push({id,motivo:'PRODUCTO_INACTIVO'});
-    vistos.add(id);aceptadas.push(id);d.ventas.push({id,fecha_hora:v.fecha_hora,vendedor:t.vid,puesto:t.p,producto:v.producto,cantidad:c,importe:-c*precios[v.producto],ref_id:c===1?v.ref:''})}
+    vistos.add(id);aceptadas.push(id);d.ventas.push({id,fecha_hora:v.fecha_hora,vendedor:t.vid,puesto:t.p,producto:v.producto,cantidad:c,importe:-c*precios[v.producto],ref_id:c===1?(v.ref||''):'',justificacion_tipo:c===1?v.justificacion_tipo:'',justificacion:c===1?String(v.justificacion||'').trim().slice(0,200):''})}
    return{aceptadas,duplicadas,rechazadas,marcadas,stock:stockDe(d,t.p)}},
   stock_inicial_guardar(q,d){untok(q.token_dueno,'dueno');if(!q.puesto||!Array.isArray(q.items))throw'FALTAN_DATOS';d.stock[q.puesto]=d.stock[q.puesto]||{};
    for(const it of q.items){const n=Number(it.cantidad_inicial);if(!(n>=0)||Math.floor(n)!==n)throw'CANTIDAD_INVALIDA';d.stock[q.puesto][it.producto]=n}return{guardados:q.items.length,stock:stockDe(d,q.puesto)}},
