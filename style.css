@@ -83,6 +83,14 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 .acc-help code{font-family:Pix,monospace;font-size:11px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:4px}
 .acc-body .hint2{color:rgba(255,255,255,.9)}
 .acc-sum.blk{margin-bottom:0}
+.acc-badge{display:inline-block;min-width:1.4em;padding:1px 6px;margin-left:6px;border-radius:999px;background:var(--r);color:var(--w);font-size:11px;vertical-align:middle}
+.puesto-resumen{display:grid;grid-template-columns:1fr;gap:10px}
+@media(min-width:700px){.puesto-resumen{grid-template-columns:1fr 1fr}}
+.res-card{background:var(--w);border:3px solid var(--k);border-radius:8px;padding:10px 12px;box-shadow:0 3px 0 rgba(58,63,75,.25)}
+.res-t{font-weight:800;margin-bottom:6px}.res-g{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:13px}.res-g b{font-family:Pix;font-size:14px}
+.avisos-list{display:flex;flex-direction:column;gap:8px;max-height:280px;overflow:auto}
+.aviso{background:var(--w);border:3px solid var(--k);border-left:6px solid var(--y);border-radius:8px;padding:8px 10px;font-size:13px;font-weight:700}
+.aviso.stock{border-left-color:var(--r)}.aviso.fix{border-left-color:var(--b)}
 /* Busy / loading on action buttons */
 .blk,.pad button{position:relative;overflow:hidden}
 .blk.busy,.pad button.busy{pointer-events:none;opacity:.85;color:transparent!important;text-shadow:none!important}

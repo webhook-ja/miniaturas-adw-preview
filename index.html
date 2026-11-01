@@ -3,8 +3,8 @@
 <meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#2b6cb0">
 <title>Miniaturas · Puesto</title><link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=33"></head><body>
-<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v33</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
+<link rel="stylesheet" href="style.css?v=34"></head><body>
+<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v34</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
 <main>
 <section id="v-login" class="view">
  <div class="card"><h1>PIN</h1><select id="who" class="who"></select>
@@ -24,6 +24,20 @@
  <h2 class="owner-title">DUEÑO</h2>
  <p class="hint2 owner-intro">Elige una sección. Solo se abre una a la vez.</p>
  <div class="acc" id="owner-acc">
+  <details class="acc-item" data-acc="avisos">
+   <summary class="acc-sum blk">Avisos <span id="avisos-n" class="acc-badge" hidden>0</span></summary>
+   <div class="acc-body">
+    <p class="acc-help">Alertas del día: stock bajo, devoluciones/correcciones con justificación. Apertura/cierre de jornada aparecerá aquí cuando esté activo.</p>
+    <div id="avisos-list" class="avisos-list"></div>
+   </div>
+  </details>
+  <details class="acc-item" data-acc="resumen-puestos">
+   <summary class="acc-sum blk">Resumen por puesto</summary>
+   <div class="acc-body">
+    <p class="acc-help">Por cada puesto: piezas estimadas en stock, ventas netas de hoy e importe. Nombres reales del puesto.</p>
+    <div id="puesto-resumen" class="puesto-resumen"></div>
+   </div>
+  </details>
   <details class="acc-item" data-acc="hoja">
    <summary class="acc-sum blk">Conectar mi hoja</summary>
    <div class="acc-body">
@@ -79,5 +93,5 @@
 </section>
 </main>
 <dialog id="dlg"><form method="dialog" id="dlg-f"><h3 id="dlg-t"></h3><div id="dlg-c"></div><p id="dlg-m" class="msg"></p><div class="dlg-b"><button value="no" class="blk" formnovalidate>Cancelar</button><button value="ok" class="blk green" id="dlg-ok">Guardar</button></div></form></dialog>
-<script src="db.js?v=33"></script><script src="api.js?v=33"></script><script src="app.js?v=33"></script>
+<script src="db.js?v=34"></script><script src="api.js?v=34"></script><script src="app.js?v=34"></script>
 </body></html>

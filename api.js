@@ -97,10 +97,14 @@ const API=(()=>{
   stock_inicial_guardar(q,d){untok(q.token_dueno,'dueno');if(!q.puesto||!Array.isArray(q.items))throw'FALTAN_DATOS';d.stock[q.puesto]=d.stock[q.puesto]||{};
    for(const it of q.items){const n=Number(it.cantidad_inicial);if(!(n>=0)||Math.floor(n)!==n)throw'CANTIDAD_INVALIDA';d.stock[q.puesto][it.producto]=n}return{guardados:q.items.length,stock:stockDe(d,q.puesto)}},
   ventas_hoy(q,d){untok(q.token_dueno,'dueno');const hoy=q.fecha||API.hoyMadrid(),coste=Object.fromEntries(d.productos.map(p=>[p.id,p.coste]));
-   const lista=d.ventas.filter(r=>r.fecha_hora.slice(0,10)===hoy),tot={importe:0,unidades:0,beneficio:0},por={};
+   const lista=d.ventas.filter(r=>r.fecha_hora.slice(0,10)===hoy),tot={importe:0,unidades:0,beneficio:0},por={},porPu={};
    lista.forEach(r=>{const k=r.puesto+'|'+r.vendedor;por[k]=por[k]||{puesto:r.puesto,vendedor:r.vendedor,importe:0,unidades:0};por[k].importe+=r.importe;por[k].unidades-=r.cantidad;
-    tot.importe+=r.importe;tot.unidades-=r.cantidad;tot.beneficio+=r.importe+r.cantidad*(coste[r.producto]||0)});tot.beneficio=Math.round(tot.beneficio*100)/100;
-   return{fecha:hoy,totales:tot,por_vendedor:Object.values(por),ventas:lista.map(r=>[r.id,r.fecha_hora,r.vendedor,r.puesto,r.producto,r.cantidad,r.importe,r.ref_id||''])}}};
+    tot.importe+=r.importe;tot.unidades-=r.cantidad;tot.beneficio+=r.importe+r.cantidad*(coste[r.producto]||0);
+    const pu=r.puesto;porPu[pu]=porPu[pu]||{puesto:pu,ventas:0,deshechas:0,unidades:0,importe:0};
+    if(r.cantidad===-1){porPu[pu].ventas++;porPu[pu].unidades++}else if(r.cantidad===1){porPu[pu].deshechas++;porPu[pu].unidades--}
+    porPu[pu].importe+=r.importe});tot.beneficio=Math.round(tot.beneficio*100)/100;
+   return{fecha:hoy,totales:tot,por_vendedor:Object.values(por),por_puesto:Object.values(porPu),
+    ventas:lista.map(r=>[r.id,r.fecha_hora,r.vendedor,r.puesto,r.producto,r.cantidad,r.importe,r.ref_id||'',r.justificacion_tipo||'',r.justificacion||''])}}};
  const mock=async req=>{await new Promise(r=>setTimeout(r,120));if(!navigator.onLine)throw Object.assign(new Error('offline'),{red:true});
   const d=load();try{const f=A[req.accion];if(!f)throw'ACCION_DESCONOCIDA';const r=f(req,d);save(d);return{ok:true,...r}}catch(c){return{ok:false,error:typeof c==='string'?c:'ERROR_INTERNO',mensaje:String(c)}}};
  const call=req=>(url()?http:mock)(req);

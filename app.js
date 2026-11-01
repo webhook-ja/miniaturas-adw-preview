@@ -210,10 +210,30 @@ async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!
  const h=await hP;if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
  const nm=k=>(names[k]||{nombre:k}).nombre;
  paintBarSum({totales:h.totales,por_vendedor:h.por_vendedor});
+ paintPuestoResumen(e,h,names);paintAvisos(e,h,names);
  $('#sales').innerHTML=`<table><tr><th>Hoy ${h.fecha}</th><th>Uds</th><th>€</th><th>Benef.</th></tr><tr><td>TOTAL</td><td class="n">${h.totales.unidades}</td><td class="n">${h.totales.importe}</td><td class="n">${h.totales.beneficio}</td></tr></table>`+
   '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${esc(puLabel(pu))}</td><td>${esc(nm(pr))}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
   '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${esc(puLabel(x.puesto))} · ${esc(x.vendedor)}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
 }catch(e){if(gen!==ownerGen)return;$('#sales').innerHTML='<p class="msg">Sin conexión o error: '+(e&&e.message||e)+'</p>'}}
+function paintPuestoResumen(e,h,names){const box=$('#puesto-resumen');if(!box)return;
+ const sales={};(h.por_puesto||[]).forEach(x=>{sales[x.puesto]=x});
+ if(!h.por_puesto){(h.ventas||[]).forEach(row=>{const pu=row[3],c=+row[5],imp=+row[6];sales[pu]=sales[pu]||{puesto:pu,ventas:0,deshechas:0,unidades:0,importe:0};
+  if(c===-1){sales[pu].ventas++;sales[pu].unidades++}else if(c===1){sales[pu].deshechas++;sales[pu].unidades--}sales[pu].importe+=imp})}
+ const pus=e.puestos||[];
+ if(!pus.length){box.innerHTML='<p class="msg">Sin puestos activos</p>';return}
+ box.innerHTML=pus.map(pu=>{const rows=e.stock[pu]||[];let piezas=0,fichas=0;rows.forEach(([pr,ini,vend])=>{const q=Math.max(0,(+ini||0)-(+vend||0));piezas+=q;if(q>0)fichas++});
+  const s=sales[pu]||{ventas:0,unidades:0,importe:0};
+  return`<div class="res-card"><div class="res-t">${esc(puLabel(pu))}</div><div class="res-g"><span><b>${piezas}</b> piezas</span><span><b>${fichas}</b> fichas</span><span><b>${s.ventas||0}</b> ventas</span><span><b>${Number(s.importe||0).toFixed(0)}</b> €</span></div></div>`}).join('')}
+function paintAvisos(e,h,names){const box=$('#avisos-list'),badge=$('#avisos-n');if(!box)return;const items=[];
+ const um=thr();(e.puestos||[]).forEach(pu=>{(e.stock[pu]||[]).forEach(([pr,ini,vend])=>{const q=Math.max(0,(+ini||0)-(+vend||0));if(q>um)return;
+  const nm=(names&&names[pr]&&names[pr].nombre)||pr;items.push({t:'stock',txt:`Stock bajo · ${puLabel(pu)} · ${nm}: quedan ${q} (≤${um})`})})});
+ (h.ventas||[]).forEach(row=>{const c=+row[5];if(c!==1)return;const tipo=row[8]||'',det=row[9]||'';if(!tipo&&!det)return;
+  const label=tipo==='devolucion'?'Devolución':(tipo==='error'?'Corrección':'Ajuste +1');
+  const nm=(names&&names[row[4]]&&names[row[4]].nombre)||row[4];
+  items.push({t:'fix',txt:`${label} · ${puLabel(row[3])} · ${nm}${det?' · '+det:''}`})});
+ if(!items.length){box.innerHTML='<p class="hint2" style="margin:0">Sin avisos ahora. (Apertura/cierre de jornada: aún no implementado.)</p>';if(badge){badge.hidden=true;badge.textContent='0'}return}
+ box.innerHTML=items.slice(0,40).map(i=>`<div class="aviso ${i.t}">${esc(i.txt)}</div>`).join('');
+ if(badge){badge.hidden=false;badge.textContent=String(items.length)}}
 const stockSlow={};
 function adj(producto,n,row,meta){if(n<0)return;pop(n>+(row.dataset.ini||0));
  const vend=+(row.dataset.vend||0),nombre=(meta&&meta.nombre)||row.dataset.nombre||producto,activo=meta?meta.activo:1;
@@ -379,5 +399,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=33',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=34',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
