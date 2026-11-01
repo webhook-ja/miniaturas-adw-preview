@@ -63,3 +63,13 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 #hoja input{width:100%;padding:12px;font-size:16px;border:3px solid #333;border-radius:8px;box-sizing:border-box}#hoja .row2{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}#hoja .msg.okm{color:#3d7a55}#hoja-msg{line-height:1.4}
 .pill.ver{font-size:11px;opacity:.75}
 #hoja{margin-bottom:8px}
+/* Busy / loading on action buttons */
+.blk,.pad button{position:relative;overflow:hidden}
+.blk.busy,.pad button.busy{pointer-events:none;opacity:.85;color:transparent!important;text-shadow:none!important}
+.blk.busy::after,.pad button.busy::after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.45) 50%,transparent 65%);background-size:200% 100%;animation:shine 1s linear infinite}
+.blk.busy::before,.pad button.busy::before{content:"";position:absolute;left:50%;top:50%;width:1.1em;height:1.1em;margin:-.55em 0 0 -.55em;border:3px solid rgba(255,255,255,.35);border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite;color:var(--k);z-index:1}
+.blk.busy.red::before,.blk.busy.blue::before,.blk.busy.green::before,.pad button.busy.green::before{border-top-color:var(--w);color:var(--w)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes shine{to{background-position:-200% 0}}
+.tile.busy{pointer-events:none;opacity:.8}
+.tile.busy::before{content:"";position:absolute;left:50%;top:42%;width:28px;height:28px;margin:-14px 0 0 -14px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;z-index:2;box-shadow:none;background:transparent!important}

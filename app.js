@@ -1,5 +1,8 @@
 const $=s=>document.querySelector(s);const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const st={ses:null,prods:[],stock:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null};
+function busyBtn(el,on){if(!el)return;if(on){if(!el.dataset.label)el.dataset.label=el.textContent;el.classList.add('busy');el.disabled=true;el.setAttribute('aria-busy','true')}
+ else{el.classList.remove('busy');el.disabled=false;el.removeAttribute('aria-busy');if(el.dataset.label!=null){el.textContent=el.dataset.label;delete el.dataset.label}}}
+async function withBusy(el,fn){busyBtn(el,1);try{return await fn()}finally{busyBtn(el,0)}}
 const thr=()=>+(localStorage.getItem('umbral')??3);
 const uuid=()=>crypto.randomUUID?crypto.randomUUID():'10000000-1000-4000-8000-100000000000'.replace(/[018]/g,c=>(c^crypto.getRandomValues(new Uint8Array(1))[0]&15>>c/4).toString(16));
 let ac;function pop(up){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime;
@@ -18,10 +21,11 @@ $('#be').textContent=API.backend==='mock'?'MOCK · DATOS DE EJEMPLO':'Apps Scrip
 ['1','2','3','4','5','6','7','8','9','⌫','0','OK'].forEach(k=>{const b=document.createElement('button');b.textContent=k;b.dataset.k=k;if(k==='OK')b.className='green';
  b.onclick=()=>{if(k==='⌫')pin=pin.slice(0,-1);else if(k==='OK')doLogin();else if(pin.length<8)pin+=k;renderPin()};$('#pad').append(b)});
 const ERR={PIN_FORMATO:'El PIN tiene 6 cifras',PIN_INCORRECTO:'PIN incorrecto',DEMASIADOS_INTENTOS:'Demasiados intentos: espera 15 min',VENDEDOR_INACTIVO:'Vendedor dado de baja'};
-async function doLogin(){$('#login-msg').textContent='';const who=$('#who').value;try{const r=await API.login(pin,who);pin='';renderPin();
+async function doLogin(){const okb=[...$('#pad').querySelectorAll('button')].find(b=>b.dataset.k==='OK');
+ await withBusy(okb,async()=>{$('#login-msg').textContent='';const who=$('#who').value;try{const r=await API.login(pin,who);pin='';renderPin();
  if(!r.ok)return $('#login-msg').textContent=ERR[r.error]||r.error;
  saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre});start()}
- catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}}
+ catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}})}
 function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');loadStall();sync()}else{show('owner');loadOwner();loadControl()}}
 $('#logout').onclick=()=>{borrarPines();saveSes(null);$('#undo').hidden=true;show('login')};
 function tokenMalo(r){if(['TOKEN_INVALIDO','TOKEN_CADUCADO','VENDEDOR_INACTIVO'].includes(r.error)){/* la cola NO se borra */saveSes(null);show('login');$('#login-msg').textContent='Sesión caducada: vuelve a meter el PIN (las ventas pendientes se conservan)';return true}}
@@ -37,7 +41,8 @@ async function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;const pd=
   b.querySelector('.nm').textContent=p.nombre;const im=b.querySelector('img');if(im)im.onerror=()=>{const sp=document.createElement('span');sp.className='ic';sp.style.setProperty('--ic',p.color_icono);im.replaceWith(sp)};
   b.onclick=()=>sell(p,s);g.append(b)})}
 const evento=(p,c)=>({id:uuid(),fecha_hora:API.ahoraMadrid(),producto:p,cantidad:c,_puesto:st.ses.puesto,_ts:Date.now()});
-async function sell(p,s){if(s<=0){pop(true);return}pop();const e=evento(p.id,-1);await QueueDB.add(e);await renderGrid();setUndo(e,p);updPend();sync()}
+async function sell(p,s){if(s<=0){pop(true);return}const tile=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(tile)tile.classList.add('busy');
+ pop();try{const e=evento(p.id,-1);await QueueDB.add(e);await renderGrid();setUndo(e,p);updPend();sync()}finally{const t2=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(t2)t2.classList.remove('busy')}}
 function setUndo(e,p){st.undo=e;$('#undo-txt').textContent='−1 '+p.nombre;$('#undo').hidden=false;clearTimeout(st.ut);st.ut=setTimeout(()=>{$('#undo').hidden=true;st.undo=null},15000)}
 $('#undo-btn').onclick=async()=>{const v=st.undo;if(!v)return;st.undo=null;$('#undo').hidden=true;pop(true);
  await QueueDB.add({...evento(v.producto,1),ref:v.id});await renderGrid();updPend();sync()};
@@ -90,14 +95,14 @@ async function loadOwner(){if(!st.ses||st.ses.rol!=='dueno')return;const T=st.se
   '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${x.puesto} · ${x.vendedor}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
 }catch(e){if(gen!==ownerGen)return;$('#sales').innerHTML='<p class="msg">Sin conexión o error: '+(e&&e.message||e)+'</p>'}}
 async function adj(producto,n,row){pop(n>0);if(n<0)return;if(row&&row.dataset.busy==='1')return;
- if(row){row.dataset.busy='1';const num=row.querySelector('.n');if(num)num.textContent=String(n);row.querySelectorAll('button').forEach(b=>b.disabled=true)}
+ if(row){row.dataset.busy='1';const num=row.querySelector('.n');if(num)num.textContent=String(n);row.querySelectorAll('button').forEach(b=>{b.disabled=true;b.classList.add('busy')})}
  try{const r=await API.stockGuardar(st.ses.token_dueno,st.ownerStall,[{producto,cantidad_inicial:n}]);
   if(!r.ok){alert(r.error||'No se pudo guardar stock');await loadOwner();return}
   await loadOwner()}
  catch(e){alert('Sin conexión al guardar stock');await loadOwner()}
- finally{if(row){row.dataset.busy='';row.querySelectorAll('button').forEach(b=>b.disabled=false)}}
+ finally{if(row){row.dataset.busy='';row.querySelectorAll('button').forEach(b=>{b.disabled=false;b.classList.remove('busy')})}}
 }
-$('#refresh').onclick=()=>{loadOwner();loadControl()};
+$('#refresh').onclick=()=>withBusy($('#refresh'),async()=>{await loadOwner();await loadControl()});
 async function loadControl(){if(!st.ses||st.ses.rol!=='dueno')return;const box=$('#control');if(!box)return;box.innerHTML='<p class="msg">Cargando control…</p>';
  try{const r=await API.controlDueno(st.ses.token_dueno);if(!r.ok){if(tokenMalo(r))return;box.innerHTML='<p class="msg">'+esc(r.error||'Error')+'</p>';return}
   const live=r.en_vivo||{},tot=live.totales||{};
@@ -119,16 +124,16 @@ function pintarPines(){const P=$('#pines');P.innerHTML='';const con=new Set((pin
  d.innerHTML=`<span class="nm"></span><span class="pin"></span><button class="blk sm">Copiar</button><button class="blk sm blue">${x.pin?'Cambiar PIN':'Crear PIN'}</button>`;
  d.querySelector('.nm').textContent=`Puesto ${i+1} (${x.puesto}) · ${x.nombre||('vendedor '+x.vendedor)}${x.ejemplo?' · EJEMPLO':''}`;d.querySelector('.pin').textContent=x.pin||'— sin PIN guardado —';if(!x.pin)d.querySelector('button').hidden=true;
  const[cp,ch]=d.querySelectorAll('button');cp.onclick=async()=>{try{await navigator.clipboard.writeText(x.pin);cp.textContent='¡Copiado!'}catch(e){cp.textContent='No se pudo'}setTimeout(()=>cp.textContent='Copiar',1500)};
- ch.onclick=async()=>{if(!confirm('¿Generar un PIN nuevo de 6 cifras para '+x.vendedor+' ('+x.puesto+')? El anterior dejará de valer.'))return;
-  const r=await API.pinCambiar(st.ses.token_dueno,x.puesto,x.vendedor||undefined).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok)return alert(r.error);x.pin=r.pin;x.vendedor=r.vendedor;if(r.nombre)x.nombre=r.nombre;pintarPines()};P.append(d)})}
-$('#pines-ver').onclick=verPines;
+ ch.onclick=()=>withBusy(ch,async()=>{if(!confirm('¿Generar un PIN nuevo de 6 cifras para '+x.vendedor+' ('+x.puesto+')? El anterior dejará de valer.'))return;
+  const r=await API.pinCambiar(st.ses.token_dueno,x.puesto,x.vendedor||undefined).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok)return alert(r.error);x.pin=r.pin;x.vendedor=r.vendedor;if(r.nombre)x.nombre=r.nombre;pintarPines()});P.append(d)})}
+$('#pines-ver').onclick=()=>withBusy($('#pines-ver'),verPines);
 /* ---- Gestión (CRUD dueño, borrado lógico). Datos solo en memoria. ---- */
 var adm=null,admTab='figuras';
 async function admCall(accion,extra){const r=await API.admin(accion,st.ses.token_dueno,extra).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok&&tokenMalo(r))throw 0;return r}
 async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;admPaint()}
-function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$('#dlg');
+function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$('#dlg'),okb=$('#dlg-ok');
  if(D.open){try{D.close('no')}catch(e){}}
- $('#dlg-t').textContent=titulo;$('#dlg-m').textContent='';$('#dlg-ok').textContent=okTxt;
+ busyBtn(okb,0);$('#dlg-t').textContent=titulo;$('#dlg-m').textContent='';okb.textContent=okTxt;
  $('#dlg-c').innerHTML=campos.map(c=>`<label>${esc(c.l)}</label>`+(c.op?`<select name="${c.n}">${c.op.map(o=>`<option value="${esc(o[0])}"${String(o[0])===String(c.v)?' selected':''}>${esc(o[1])}</option>`).join('')}</select>`:`<input name="${c.n}" type="${c.t||'text'}" value="${esc(c.v??'')}" ${c.t==='number'?'min="0" step="'+(c.s||1)+'"':''}${c.o?'':' required'}>`)).join('');
  let done=false;const finish=v=>{if(done)return;done=true;res(v)};
  D.onclose=()=>{if(D.returnValue!=='ok')return finish(null);finish(Object.fromEntries(new FormData($('#dlg-f'))))};
@@ -148,7 +153,8 @@ function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.cla
  if(admTab==='stock'){h='<p class="hint2">Pasa unidades del stock inicial de un puesto a otro (no puede superar lo que queda).</p><button class="blk blue add" data-a="stk-mov">Mover stock entre puestos</button>'}
  A.innerHTML=h}
 document.getElementById('adm-tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;admTab=t;adm?admPaint():admLoad()};
-document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,id=b.dataset.id;let r,v;try{
+document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b||b.classList.contains('busy'))return;const a=b.dataset.a,id=b.dataset.id;let r,v;
+ await withBusy(b,async()=>{try{
  if(!adm){await admLoad();if(!adm)return alert('No se pudo cargar la gestión')}
  const fig=adm.figuras.find(x=>x.id===id),pu=adm.puestos.find(x=>x.id===id),ve=adm.vendedores.find(x=>x.id===id),PO=actP().map(p=>[p.id,p.nombre]);
  if(a==='fig-new'||a==='fig-ed'){v=await form(fig?'Editar figura':'Nueva figura',[{l:'Nombre',n:'nombre',v:fig?.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?.precio??''},{l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?.coste??0},{l:'Color',n:'color_icono',t:'color',v:fig?.color_icono||'#7a9cc6'},{l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:fig?.foto_url||''}]);
@@ -175,23 +181,23 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
   if(!confirm(msg))return;
   r=await admCall({fig:'figura_borrar',pue:'puesto_borrar',ven:'vendedor_borrar'}[a.slice(0,3)],{id})}
  if(r&&!r.ok){const E={PUESTO_CON_VENDEDORES:'Este puesto aún tiene vendedores activos. Muévelos o bórralos antes.',PUESTO_INVALIDO:'Puesto no encontrado.',VENDEDOR_DESCONOCIDO:'Vendedor no encontrado.',DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos.',DEMO_MAX_VENDEDORES:'Demo: máximo 3 vendedores.'};return alert(E[r.error]||('Error: '+r.error))}
- if(r){await admLoad();loadOwner();if(typeof loadControl==='function')loadControl()}}catch(err){if(err!==0)alert('Error: '+(err&&err.message||err))}};
+ if(r){await admLoad();loadOwner();if(typeof loadControl==='function')loadControl()}}catch(err){if(err!==0)alert('Error: '+(err&&err.message||err))}})};
 /* ---- Conectar mi hoja (v8): guarda la URL /exec en localStorage 'api_url' (la misma que ?api) ---- */
 const EXEC=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{10,}\/exec\/?$/,DEV=/^http:\/\/(127\.0\.0\.1|localhost):\d+\/exec$/;
 const COMO='Necesito la URL de la aplicación web, no la de la hoja. En tu hoja: Extensiones › Apps Script › Implementar › Nueva implementación › tipo «Aplicación web» (ejecutar como: yo; acceso: cualquiera) › Implementar › copia la URL que termina en /exec.';
 function hojaPaint(){const u=localStorage.getItem('api_url');const on=u&&u!=='mock';$('#hoja-est').textContent=on?'Conectado a: '+(localStorage.getItem('api_hoja')||u):'Modo DEMO (datos de EJEMPLO). Pega la URL /exec de tu Apps Script.';$('#hoja-off').hidden=!on;if(on)$('#hoja-url').value=u}
 function hojaMsg(t,ok){const m=$('#hoja-msg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('okm',!!ok)}
 async function hojaCambio(){await new Promise(r=>setTimeout(r,1800));borrarPines();saveSes(null);show('login');loadPuestos()}
-$('#hoja-ok').onclick=async()=>{const u=$('#hoja-url').value.trim();
+$('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url').value.trim();
  if(/docs\.google\.com\/spreadsheets/.test(u))return hojaMsg('Eso es la URL de la hoja de cálculo. '+COMO);
  if(!EXEC.test(u)&&!DEV.test(u))return hojaMsg('URL no válida. '+COMO);
  {const ps=await QueueDB.get('puestos')||[];await purgeOrphanQueue((ps||[]).map(p=>p.id||p));if(await QueueDB.count())return hojaMsg('Hay ventas pendientes de enviar. Sincroniza antes de cambiar de hoja.');}
  hojaMsg('Probando conexión…');let r;try{r=await API.ping(u)}catch(e){r={ok:false,error:e.message||'Sin respuesta'}}
  if(r&&r.ok&&r.app!=='miniaturas')return hojaMsg('Esa URL responde, pero no es la app de Miniaturas (app≠miniaturas). Implementa el Code.gs de Miniaturas en tu hoja. '+COMO);
  if(!r||!r.ok)return hojaMsg('No se pudo conectar ('+((r&&(r.mensaje||r.error))||'respuesta no válida')+'). Revisa que la implementación tenga acceso «Cualquiera». '+COMO);
- localStorage.setItem('api_url',u);localStorage.setItem('api_hoja',r.hoja||'');hojaPaint();hojaMsg('Conectado a: '+(r.hoja||'?')+(r.version?' (v '+r.version+')':'')+'. Entra con el PIN de dueño de esa hoja.',1);hojaCambio()};
-$('#hoja-off').onclick=async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);hojaCambio()};
+ localStorage.setItem('api_url',u);localStorage.setItem('api_hoja',r.hoja||'');hojaPaint();hojaMsg('Conectado a: '+(r.hoja||'?')+(r.version?' (v '+r.version+')':'')+'. Entra con el PIN de dueño de esa hoja.',1);hojaCambio()});
+$('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=14',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='14')return;sessionStorage.setItem('sw_reload','14');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=15',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='15')return;sessionStorage.setItem('sw_reload','15');location.reload()})}
