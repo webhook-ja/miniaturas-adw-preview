@@ -32,12 +32,12 @@ const API=(()=>{
    Object.assign(x,{nombre:String(f.nombre).slice(0,60),precio:+f.precio,coste:+(f.coste||0),color_icono:/^#[0-9a-f]{6}$/i.test(f.color_icono)?f.color_icono:'#999999',foto_url:f.foto_url||''});return{figura:x}},
   figura_borrar(q,d){untok(q.token_dueno,'dueno');const x=d.productos.find(p=>p.id===q.id);if(!x)throw'PRODUCTO_DESCONOCIDO';x.activo=0;return{id:x.id,activo:0}},
   puesto_guardar(q,d){untok(q.token_dueno,'dueno');const p=q.puesto||{};if(!p.nombre)throw'FALTAN_DATOS';let x=p.id&&d.puestosT.find(y=>y.id===p.id);
-   if(p.id&&!x)throw'PUESTO_INVALIDO';if(!x){x={id:nid(d.puestosT,'P',1),activo:1};d.puestosT.push(x);d.stock[x.id]={}}x.nombre=String(p.nombre).slice(0,40);return{puesto:x}},
+   if(p.id&&!x)throw'PUESTO_INVALIDO';if(!x){if(d.puestosT.filter(y=>y.activo).length>=3)throw'DEMO_MAX_PUESTOS';x={id:nid(d.puestosT,'P',1),activo:1};d.puestosT.push(x);d.stock[x.id]={}}x.nombre=String(p.nombre).slice(0,40);return{puesto:x}},
   puesto_borrar(q,d){untok(q.token_dueno,'dueno');const x=d.puestosT.find(y=>y.id===q.id);if(!x)throw'PUESTO_INVALIDO';
-   if(d.vendedores.some(v=>v.activo&&v.puesto===x.id))throw'PUESTO_CON_VENDEDORES';x.activo=0;return{id:x.id,activo:0}},
+   const vendOff=d.vendedores.filter(v=>v.activo&&v.puesto===x.id);vendOff.forEach(v=>{v.activo=false});x.activo=0;return{id:x.id,activo:0,vendedores_borrados:vendOff.map(v=>v.id)}},
   vendedor_guardar(q,d){untok(q.token_dueno,'dueno');const v=q.vendedor||{};if(!v.nombre||!v.puesto)throw'FALTAN_DATOS';
    if(!d.puestosT.some(p=>p.id===v.puesto&&p.activo))throw'PUESTO_INVALIDO';let x=v.id&&d.vendedores.find(y=>y.id===v.id),pin,prev;if(v.id&&!x)throw'VENDEDOR_DESCONOCIDO';
-   if(!x){x={id:nid(d.vendedores,'V',2),activo:true};do pin=String(crypto.getRandomValues(new Uint32Array(1))[0]%1e6).padStart(6,'0');while(d.vendedores.some(y=>y.pin===pin));x.pin=pin;d.vendedores.push(x)}
+   if(!x){if(d.vendedores.filter(y=>y.activo).length>=3)throw'DEMO_MAX_VENDEDORES';x={id:nid(d.vendedores,'V',2),activo:true};do pin=String(crypto.getRandomValues(new Uint32Array(1))[0]%1e6).padStart(6,'0');while(d.vendedores.some(y=>y.pin===pin));x.pin=pin;d.vendedores.push(x)}
    else prev=x.puesto;x.nombre=String(v.nombre).slice(0,60);x.puesto=v.puesto;d.asignaciones=d.asignaciones||[];
    if(!prev||prev!==v.puesto)d.asignaciones.push({id:crypto.randomUUID(),fecha_hora:API.ahoraMadrid(),vendedor:x.id,puesto:v.puesto,origen:prev?'editar':'alta'});
    const{pin:_,...out}=x;return pin?{vendedor:out,pin,no_store:true}:{vendedor:out}},

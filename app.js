@@ -139,9 +139,11 @@ function fila(txt,act,del,btns){return`<div class="line${act?'':' del'}"><span c
 function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.classList.toggle('sel',b.dataset.t===admTab));const A=$('#adm');let h='';
  if(admTab==='figuras'){h='<button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} €`,f.activo,0,
   `<button class="blk sm" data-a="fig-ed" data-id="${f.id}">Editar</button><button class="blk sm red" data-a="fig-del" data-id="${f.id}">Borrar</button>`)).join('')}
- if(admTab==='puestos'){h='<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>'+adm.puestos.map(p=>fila(`${esc(p.nombre)} <span class="tag">${p.id}</span> · ${adm.vendedores.filter(v=>v.activo&&v.puesto===p.id).length} vend.`,p.activo,0,
+ if(admTab==='puestos'){const nP=adm.puestos.filter(p=>p.activo).length,capP=nP>=3;
+  h=(capP?'<p class="hint2">Demo: máximo 3 puestos</p>':'<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>')+adm.puestos.map(p=>fila(`${esc(p.nombre)} <span class="tag">${p.id}</span> · ${adm.vendedores.filter(v=>v.activo&&v.puesto===p.id).length} vend.`,p.activo,0,
   `<button class="blk sm" data-a="pue-ed" data-id="${p.id}">Editar</button><button class="blk sm red" data-a="pue-del" data-id="${p.id}">Borrar</button>`)).join('')}
- if(admTab==='vendedores'){h='<button class="blk green add" data-a="ven-new">+ Nuevo vendedor</button>'+adm.vendedores.map(v=>fila(`${esc(v.nombre)} <span class="tag">${v.id}</span> · ${esc(pName(v.puesto))}`,v.activo,0,
+ if(admTab==='vendedores'){const nV=adm.vendedores.filter(v=>v.activo).length,capV=nV>=3;
+  h=(capV?'<p class="hint2">Demo: máximo 3 vendedores</p>':'<button class="blk green add" data-a="ven-new">+ Nuevo vendedor</button>')+adm.vendedores.map(v=>fila(`${esc(v.nombre)} <span class="tag">${v.id}</span> · ${esc(pName(v.puesto))}`,v.activo,0,
   `<button class="blk sm" data-a="ven-ed" data-id="${v.id}">Editar</button><button class="blk sm blue" data-a="ven-mov" data-id="${v.id}">Mover</button><button class="blk sm red" data-a="ven-del" data-id="${v.id}">Borrar</button>`)).join('')}
  if(admTab==='stock'){h='<p class="hint2">Pasa unidades del stock inicial de un puesto a otro (no puede superar lo que queda).</p><button class="blk blue add" data-a="stk-mov">Mover stock entre puestos</button>'}
  A.innerHTML=h}
@@ -151,7 +153,8 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
  const fig=adm.figuras.find(x=>x.id===id),pu=adm.puestos.find(x=>x.id===id),ve=adm.vendedores.find(x=>x.id===id),PO=actP().map(p=>[p.id,p.nombre]);
  if(a==='fig-new'||a==='fig-ed'){v=await form(fig?'Editar figura':'Nueva figura',[{l:'Nombre',n:'nombre',v:fig?.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?.precio??''},{l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?.coste??0},{l:'Color',n:'color_icono',t:'color',v:fig?.color_icono||'#7a9cc6'},{l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:fig?.foto_url||''}]);
   if(v){if(!v.foto_url)delete v.foto_url;r=await admCall('figura_guardar',{figura:{...(fig?{id:fig.id}:{}),...v}})}}
- if(a==='pue-alta'){const N=1+Math.max(0,...adm.puestos.map(p=>+p.id.slice(1)||0));r=await admCall('puesto_guardar',{puesto:{nombre:'Puesto '+N}});if(!r.ok)return alert('Error: '+r.error);const np=r.puesto;
+ if(a==='pue-alta'){if(adm.puestos.filter(p=>p.activo).length>=3)return alert('Demo: máximo 3 puestos');if(adm.vendedores.filter(v=>v.activo).length>=3)return alert('Demo: máximo 3 vendedores (el alta de puesto crea uno)');
+  const N=1+Math.max(0,...adm.puestos.map(p=>+p.id.slice(1)||0));r=await admCall('puesto_guardar',{puesto:{nombre:'Puesto '+N}});if(!r.ok)return alert(({DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos'}[r.error])||('Error: '+r.error));const np=r.puesto;
   r=await admCall('vendedor_guardar',{vendedor:{nombre:'Vendedor '+np.nombre,puesto:np.id}});if(!r.ok){await admLoad();return alert('Puesto creado, pero falta el vendedor: '+r.error)}const nv=r.vendedor;let pin=r.pin;r=null;await admLoad();loadOwner();
   try{await verPines()}catch(_){ }
   for(;;){const pr=form('Editar '+np.id,[{l:'Nombre del puesto',n:'nombre',v:np.nombre},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);$('#dlg-m').textContent='PIN de '+nv.nombre+': '+(pin||'—')+' (apúntalo; no se guarda en el dispositivo)';v=await pr;if(!v)break;
@@ -159,14 +162,20 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
    if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;try{await verPines()}catch(_){}}
   pin=null;r={ok:true}}
  if(a==='pue-new'||a==='pue-ed'){v=await form(pu?'Editar puesto':'Nuevo puesto',[{l:'Nombre',n:'nombre',v:pu?.nombre}]);if(v)r=await admCall('puesto_guardar',{puesto:{...(pu?{id:pu.id}:{}),...v}})}
- if(a==='ven-new'||a==='ven-ed'){v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve?.nombre},{l:'Email',n:'email',t:'email',o:1,v:ve?.email||''},{l:'Puesto activo (cambia al entrar en otro)',n:'puesto',op:PO,v:ve?.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
+ if(a==='ven-new'||a==='ven-ed'){if(a==='ven-new'&&adm.vendedores.filter(v=>v.activo).length>=3)return alert('Demo: máximo 3 vendedores');
+  v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve?.nombre},{l:'Email',n:'email',t:'email',o:1,v:ve?.email||''},{l:'Puesto activo (cambia al entrar en otro)',n:'puesto',op:PO,v:ve?.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
   if(v){const pinAcc=v.pin_acc;delete v.pin_acc;r=await admCall('vendedor_guardar',{vendedor:{...(ve?{id:ve.id}:{}),...v}});if(r.ok&&r.pin)alert('PIN del nuevo vendedor (apúntalo, no se guarda aquí): '+r.pin);if(r&&r.ok&&pinAcc==='cambiar'&&ve){const q=await admCall('pin_crear_o_cambiar',{puesto:v.puesto||ve.puesto,vendedor_id:ve.id});if(!q.ok)alert('Error PIN: '+q.error);else{alert('PIN nuevo: '+q.pin);await verPines()}}}}
  if(a==='ven-mov'){v=await form('Mover a '+ve.nombre,[{l:'Puesto destino',n:'puesto_destino',op:PO.filter(p=>p[0]!==ve.puesto)}],'Mover');if(v)r=await admCall('vendedor_mover',{vendedor_id:ve.id,...v})}
  if(a==='stk-mov'){const pr=adm.figuras.filter(f=>f.activo).map(f=>[f.id,f.nombre]);v=await form('Mover stock',[{l:'Figura',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO},{l:'Hasta',n:'hasta',op:PO,v:PO[1]?.[0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
   if(v){r=await admCall('stock_mover',{...v,cantidad:+v.cantidad});if(r.ok)alert('Movido. Quedan en origen: '+r.desde.find(s=>s.producto===v.producto).quedan)}}
- if(a.endsWith('-del')){const x=fig||pu||ve;if(!confirm('¿Borrar «'+x.nombre+'»? Se marcará como borrado (no se pierde el historial).'))return;
+ if(a.endsWith('-del')){const x=fig||pu||ve;if(!x)return alert('No se encontró el elemento');
+  const msg=a==='pue-del'
+   ?('¿Borrar el puesto «'+x.nombre+'»? Los vendedores con este puesto activo también se darán de baja (el historial no se pierde).')
+   :('¿Borrar «'+x.nombre+'»? Se marcará como borrado (no se pierde el historial).');
+  if(!confirm(msg))return;
   r=await admCall({fig:'figura_borrar',pue:'puesto_borrar',ven:'vendedor_borrar'}[a.slice(0,3)],{id})}
- if(r&&!r.ok)return alert('Error: '+r.error);if(r){await admLoad();loadOwner()}}catch(err){if(err!==0)alert('Error: '+(err&&err.message||err))}};
+ if(r&&!r.ok){const E={PUESTO_CON_VENDEDORES:'Este puesto aún tiene vendedores activos. Muévelos o bórralos antes.',PUESTO_INVALIDO:'Puesto no encontrado.',VENDEDOR_DESCONOCIDO:'Vendedor no encontrado.',DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos.',DEMO_MAX_VENDEDORES:'Demo: máximo 3 vendedores.'};return alert(E[r.error]||('Error: '+r.error))}
+ if(r){await admLoad();loadOwner();if(typeof loadControl==='function')loadControl()}}catch(err){if(err!==0)alert('Error: '+(err&&err.message||err))}};
 /* ---- Conectar mi hoja (v8): guarda la URL /exec en localStorage 'api_url' (la misma que ?api) ---- */
 const EXEC=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{10,}\/exec\/?$/,DEV=/^http:\/\/(127\.0\.0\.1|localhost):\d+\/exec$/;
 const COMO='Necesito la URL de la aplicación web, no la de la hoja. En tu hoja: Extensiones › Apps Script › Implementar › Nueva implementación › tipo «Aplicación web» (ejecutar como: yo; acceso: cualquiera) › Implementar › copia la URL que termina en /exec.';
@@ -184,5 +193,5 @@ $('#hoja-ok').onclick=async()=>{const u=$('#hoja-url').value.trim();
 $('#hoja-off').onclick=async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);hojaCambio()};
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=13',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='13')return;sessionStorage.setItem('sw_reload','13');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=14',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='14')return;sessionStorage.setItem('sw_reload','14');location.reload()})}
