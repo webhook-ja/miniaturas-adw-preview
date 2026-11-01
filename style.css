@@ -77,5 +77,6 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 .line.stock-pend .n::after{content:"";display:inline-block;width:.55em;height:.55em;margin-left:.35em;border:2px solid rgba(58,63,75,.25);border-top-color:var(--k);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
 .line .n.flash{animation:nflash .18s ease-out}
 @keyframes nflash{50%{transform:scale(1.25)}}
-.stall-pin{color:var(--w);font-size:15px;font-weight:700;margin:0 0 12px;padding:10px 12px;background:rgba(20,20,30,.35);border:3px solid var(--k);border-radius:8px}
-.stall-pin .pin{font-family:Pix;font-size:18px;letter-spacing:3px;background:var(--y);color:var(--k);padding:2px 8px;border-radius:4px;border:2px solid var(--k)}
+.owner-head{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+.owner-pin{font-family:inherit;font-size:14px;font-weight:800;color:var(--k);background:var(--y);border:3px solid var(--k);border-radius:8px;padding:6px 10px;text-shadow:none;box-shadow:0 3px 0 rgba(58,63,75,.35)}
+.owner-pin .pin{font-family:Pix;font-size:16px;letter-spacing:3px;margin-left:4px}
