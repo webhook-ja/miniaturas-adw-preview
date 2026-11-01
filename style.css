@@ -73,3 +73,5 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 @keyframes shine{to{background-position:-200% 0}}
 .tile.busy{pointer-events:none;opacity:.8}
 .tile.busy::before{content:"";position:absolute;left:50%;top:42%;width:28px;height:28px;margin:-14px 0 0 -14px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;z-index:2;box-shadow:none;background:transparent!important}
+.line.stock-pend .n{opacity:.65}
+.line.stock-pend .n::after{content:"";display:inline-block;width:.55em;height:.55em;margin-left:.35em;border:2px solid rgba(58,63,75,.25);border-top-color:var(--k);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
