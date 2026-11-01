@@ -145,8 +145,9 @@ document.addEventListener('visibilitychange',()=>{
 $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);paintAllTileQtys();paintOwnerStockWarn()};
 function paintStallTabs(puestos,sel){
  const t=$('#stall-tabs');t.innerHTML='';
- puestos.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='blk'+(p===sel?' sel':'');b.textContent=puLabel(p);
-  b.onclick=()=>{if(st.ownerStall===p)return;st.ownerStall=p;paintStallTabs(puestos,p);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner(true)};t.append(b)});
+ const addTab=(id,label)=>{const b=document.createElement('button');b.type='button';b.className='blk'+(sel===id?' sel':'');b.textContent=label;
+  b.onclick=()=>{if(st.ownerStall===id)return;st.ownerStall=id;paintStallTabs(puestos,id);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner(true)};t.append(b)};
+ addTab('*','Todos');puestos.forEach(p=>addTab(p,puLabel(p)));
 }
 async function ensurePines(){if(pines!==null)return pines;if(!st.ses||st.ses.rol!=='dueno')return null;
  const r=await API.pinesVer(st.ses.token_dueno).catch(()=>({ok:false}));if(!r.ok){if(tokenMalo(r))return null;return null}
@@ -155,10 +156,11 @@ async function ensurePines(){if(pines!==null)return pines;if(!st.ses||st.ses.rol
 
 const stockPend={},stockTimers={},stockSaving={};
 function stockKey(puesto,producto){return puesto+'|'+producto}
-function paintStockRow(row,nombre,activo,ini,vend){const quedan=Math.max(0,ini-vend);row.dataset.ini=String(ini);row.dataset.vend=String(vend);row.dataset.quedan=String(quedan);
+function paintStockRow(row,nombre,activo,ini,vend){const quedan=Math.max(0,ini-vend);row.dataset.ini=String(ini);row.dataset.vend=String(vend);row.dataset.quedan=String(quedan);if(nombre)row.dataset.nombre=nombre;
  const num=row.querySelector('.n');if(num){num.textContent=String(ini);num.classList.toggle('low',quedan<=thr());num.classList.toggle('zero',quedan<=0)}
  row.classList.toggle('low',quedan<=thr());row.classList.toggle('zero',quedan<=0);
- const nm=row.querySelector('.nm');if(nm)nm.textContent=nombre+(activo===0?' (inactivo)':'')+' · vendidas '+vend+' · quedan '+quedan}
+ const nm=row.querySelector('.nm');if(nm){const base=nombre||row.dataset.nombre||'';const pu=row.dataset.puesto;const head=(st.ownerStall==='*'&&pu?puLabel(pu)+' · ':'')+base;
+  nm.textContent=head+(activo===0?' (inactivo)':'')+' · vendidas '+vend+' · quedan '+quedan}}
 function paintOwnerStockWarn(){document.querySelectorAll('#stock-list .line').forEach(row=>{
  const quedan=Math.max(0,+(row.dataset.ini||0)-(+(row.dataset.vend||0)));const num=row.querySelector('.n');
  if(num){num.classList.toggle('low',quedan<=thr());num.classList.toggle('zero',quedan<=0)}
@@ -166,7 +168,7 @@ function paintOwnerStockWarn(){document.querySelectorAll('#stock-list .line').fo
 async function flushStock(key){const p=stockPend[key];if(!p||stockSaving[key])return;stockSaving[key]=1;delete stockPend[key];clearTimeout(stockTimers[key]);delete stockTimers[key];clearTimeout(stockSlow[key]);delete stockSlow[key];
  try{const r=await API.stockGuardar(st.ses.token_dueno,p.puesto,[{producto:p.producto,cantidad_inicial:p.n}]);
   if(!r.ok){alert(r.error||'No se pudo guardar stock');await loadOwner(true);return}
-  if(p.row&&p.row.isConnected&&st.ownerStall===p.puesto){paintStockRow(p.row,p.nombre,p.activo,p.n,+(p.row.dataset.vend||0));p.row.classList.remove('stock-pend')}}
+  if(p.row&&p.row.isConnected&&(st.ownerStall==='*'||st.ownerStall===p.puesto)){paintStockRow(p.row,p.nombre,p.activo,p.n,+(p.row.dataset.vend||0));p.row.classList.remove('stock-pend')}}
  catch(e){alert('Sin conexión al guardar stock');await loadOwner(true)}
  finally{delete stockSaving[key];if(stockPend[key])flushStock(key);else if(p.row)p.row.classList.remove('stock-pend')}}
 async function flushAllStock(){Object.keys(stockTimers).forEach(k=>{clearTimeout(stockTimers[k]);delete stockTimers[k]});Object.keys(stockSlow).forEach(k=>{clearTimeout(stockSlow[k]);delete stockSlow[k]});
@@ -174,16 +176,17 @@ async function flushAllStock(){Object.keys(stockTimers).forEach(k=>{clearTimeout
  while(Object.keys(stockSaving).length||Object.keys(stockPend).length)await new Promise(r=>setTimeout(r,40))}
 async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!skipFlush)await flushAllStock();const T=st.ses.token_dueno;const gen=++ownerGen;if(!adm)await admLoad();
  try{const eP=API.estadoDueno(T),hP=API.ventasHoy(T);const e=await eP;if(gen!==ownerGen)return;if(!e.ok){if(tokenMalo(e))return;throw new Error(e.error)}
- st.ownerAt=Date.now();st.puestosDueno=e.puestos;st.ownerStall=e.puestos.includes(st.ownerStall)?st.ownerStall:e.puestos[0];
+ st.ownerAt=Date.now();st.puestosDueno=e.puestos;st.ownerStall=(st.ownerStall==='*'||e.puestos.includes(st.ownerStall))?st.ownerStall:'*';
  mergePuestoNames(e.puestos_nombres);if(adm){adm.stockByPu=e.stock||{};if(adm.puestos)mergePuestoNames(Object.fromEntries(adm.puestos.map(p=>[p.id,p.nombre])))}
  purgeOrphanQueue(e.puestos);updPend();
  paintStallTabs(e.puestos,st.ownerStall);
  const names=Object.fromEntries(e.productos.map(p=>[p[0],{nombre:p[1],activo:p[4]}])),L=$('#stock-list');L.innerHTML='';
- (e.stock[st.ownerStall]||[]).forEach(([producto,ini,vend,quedan])=>{const p=names[producto]||{nombre:producto},d=document.createElement('div');d.className='line';
+ const showPu=st.ownerStall==='*'?e.puestos:[st.ownerStall];
+ showPu.forEach(pu=>{(e.stock[pu]||[]).forEach(([producto,ini,vend])=>{const p=names[producto]||{nombre:producto},d=document.createElement('div');d.className='line';d.dataset.puesto=pu;
   d.innerHTML=`<span class="nm"></span><button type="button" class="blk red">−</button><span class="n">${ini}</span><button type="button" class="blk green">+</button>`;
   paintStockRow(d,p.nombre,p.activo,ini,vend);const[m,pl]=d.querySelectorAll('button');
   m.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur-1,d,p)};
-  pl.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur+1,d,p)};L.append(d)});
+  pl.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur+1,d,p)};L.append(d)})});
  if(!L.children.length)L.innerHTML='<p class="msg">Sin stock en este puesto. Usa + en otro puesto o Mover stock.</p>';
  if(adm&&admTab==='figuras')admPaint();
  const h=await hP;if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
@@ -194,10 +197,11 @@ async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!
 }catch(e){if(gen!==ownerGen)return;$('#sales').innerHTML='<p class="msg">Sin conexión o error: '+(e&&e.message||e)+'</p>'}}
 const stockSlow={};
 function adj(producto,n,row,meta){if(n<0)return;pop(n>+(row.dataset.ini||0));
- const vend=+(row.dataset.vend||0),nmEl=row.querySelector('.nm'),nombre=(meta&&meta.nombre)||(nmEl&&String(nmEl.textContent||'').split(' ·')[0])||producto,activo=meta?meta.activo:1;
+ const vend=+(row.dataset.vend||0),nombre=(meta&&meta.nombre)||row.dataset.nombre||producto,activo=meta?meta.activo:1;
+ const puesto=row.dataset.puesto||(st.ownerStall!=='*'?st.ownerStall:null);if(!puesto||puesto==='*')return;
  paintStockRow(row,nombre,activo,n,vend);
  const num=row.querySelector('.n');if(num){num.classList.remove('flash');void num.offsetWidth;num.classList.add('flash')}
- const puesto=st.ownerStall,key=stockKey(puesto,producto);
+ const key=stockKey(puesto,producto);
  stockPend[key]={producto,n,row,puesto,nombre,activo};clearTimeout(stockTimers[key]);clearTimeout(stockSlow[key]);
  /* Debounce save; only show "saving" spinner if GAS is still slow after 1s — never block the buttons. */
  stockTimers[key]=setTimeout(()=>flushStock(key),550);
@@ -354,5 +358,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=29',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=30',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
