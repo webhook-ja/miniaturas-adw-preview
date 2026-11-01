@@ -3,8 +3,8 @@
 <meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#2b6cb0">
 <title>Miniaturas · Puesto</title><link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=35"></head><body>
-<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v35</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
+<link rel="stylesheet" href="style.css?v=36"></head><body>
+<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v36</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
 <main>
 <section id="v-login" class="view">
  <div class="card"><h1>PIN</h1><select id="who" class="who"></select>
@@ -26,16 +26,19 @@
   <p class="acc-help hero-help">Resumen principal: piezas, fichas, ventas e importe por puesto.</p>
   <div id="puesto-resumen" class="puesto-resumen"></div>
  </section>
- <nav class="owner-nav" id="owner-nav" aria-label="Secciones">
-  <button type="button" class="blk nav-btn sel" data-panel="stock">Stock</button>
-  <button type="button" class="blk nav-btn" data-panel="avisos">Avisos <span id="avisos-n" class="acc-badge" hidden>0</span></button>
-  <button type="button" class="blk nav-btn" data-panel="figuras" data-adm="figuras">Figuras</button>
-  <button type="button" class="blk nav-btn" data-panel="equipo" data-adm="puestos">Equipo</button>
-  <button type="button" class="blk nav-btn" data-panel="mover" data-adm="stock">Mover</button>
-  <button type="button" class="blk nav-btn" data-panel="control">Control</button>
-  <button type="button" class="blk nav-btn" data-panel="ventas">Ventas</button>
-  <button type="button" class="blk nav-btn" data-panel="hoja">Hoja</button>
- </nav>
+ <details class="owner-menu" id="owner-menu">
+  <summary class="owner-menu-sum blk"><span id="owner-menu-label">Menú · Stock</span> <span class="owner-menu-caret">▾</span></summary>
+  <nav class="owner-nav" id="owner-nav" aria-label="Secciones">
+   <button type="button" class="blk nav-btn sel" data-panel="stock" data-label="Stock">Stock</button>
+   <button type="button" class="blk nav-btn" data-panel="avisos" data-label="Avisos">Avisos <span id="avisos-n" class="acc-badge" hidden>0</span></button>
+   <button type="button" class="blk nav-btn" data-panel="figuras" data-adm="figuras" data-label="Figuras">Figuras</button>
+   <button type="button" class="blk nav-btn" data-panel="equipo" data-adm="puestos" data-label="Equipo">Equipo</button>
+   <button type="button" class="blk nav-btn" data-panel="mover" data-adm="stock" data-label="Mover">Mover</button>
+   <button type="button" class="blk nav-btn" data-panel="control" data-label="Control">Control</button>
+   <button type="button" class="blk nav-btn" data-panel="ventas" data-label="Ventas">Ventas</button>
+   <button type="button" class="blk nav-btn" data-panel="hoja" data-label="Hoja">Hoja</button>
+  </nav>
+ </details>
  <div class="owner-panels" id="owner-panels">
   <div class="owner-panel" data-panel="stock">
    <p class="acc-help">Ajusta stock inicial. Umbral de aviso en rojo. Filtros Todos / puesto. Guarda en la hoja.</p>
@@ -75,5 +78,5 @@
 </section>
 </main>
 <dialog id="dlg"><form method="dialog" id="dlg-f"><h3 id="dlg-t"></h3><div id="dlg-c"></div><p id="dlg-m" class="msg"></p><div class="dlg-b"><button value="no" class="blk" formnovalidate>Cancelar</button><button value="ok" class="blk green" id="dlg-ok">Guardar</button></div></form></dialog>
-<script src="db.js?v=35"></script><script src="api.js?v=35"></script><script src="app.js?v=35"></script>
+<script src="db.js?v=36"></script><script src="api.js?v=36"></script><script src="app.js?v=36"></script>
 </body></html>

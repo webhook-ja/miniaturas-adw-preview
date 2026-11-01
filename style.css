@@ -73,10 +73,15 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 .owner-title{margin-bottom:8px}
 .owner-hero{background:rgba(251,250,246,.18);border:3px solid var(--k);border-radius:12px;padding:14px 12px;margin-bottom:14px;box-shadow:0 4px 0 rgba(58,63,75,.25)}
 .hero-help{margin-bottom:10px}
-.owner-nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-.owner-nav .nav-btn{margin:0;flex:1 1 auto;min-width:calc(25% - 8px);font-size:14px;padding:12px 10px}
-@media(max-width:520px){.owner-nav .nav-btn{min-width:calc(50% - 8px);font-size:13px;padding:10px 8px}}
+.owner-menu{position:relative;margin:0 0 12px;border:0;padding:0}
+.owner-menu>summary{list-style:none;cursor:pointer;display:inline-flex;align-items:center;gap:8px;margin:0;padding:8px 12px;font-size:13px;width:auto}
+.owner-menu>summary::-webkit-details-marker{display:none}
+.owner-menu[open]>summary{background:var(--g);color:var(--w)}
+.owner-menu-caret{opacity:.75;font-size:11px}
+.owner-nav{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;padding:8px;margin-top:6px;background:var(--w);border:3px solid var(--k);border-radius:8px;box-shadow:0 4px 0 rgba(58,63,75,.25);-webkit-overflow-scrolling:touch}
+.owner-nav .nav-btn{margin:0;flex:0 0 auto;font-size:12px;padding:7px 10px;min-width:0;border-width:2px;box-shadow:0 2px 0 rgba(58,63,75,.35);border-radius:5px;white-space:nowrap}
 .owner-nav .nav-btn.sel{background:var(--g);color:var(--w)}
+.owner-nav .acc-badge{margin-left:4px;font-size:10px;padding:0 5px}
 .owner-panels{background:rgba(251,250,246,.1);border:3px solid var(--k);border-radius:12px;padding:14px 12px}
 .acc-help{color:var(--w);font-size:13px;line-height:1.35;margin:0 0 12px;opacity:.95}
 .acc-help code{font-family:Pix,monospace;font-size:11px;background:rgba(0,0,0,.2);padding:1px 4px;border-radius:4px}

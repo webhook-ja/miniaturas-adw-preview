@@ -152,16 +152,19 @@ document.addEventListener('visibilitychange',()=>{
   Promise.all([loadOwner(),loadControl()])}
 });
 /* ---- Dueño ---- */
-(function(){const nav=$('#owner-nav'),panels=$('#owner-panels');if(!nav||!panels)return;
+(function(){const menu=$('#owner-menu'),nav=$('#owner-nav'),panels=$('#owner-panels'),lab=$('#owner-menu-label');if(!nav||!panels)return;
  const parkAdm=slot=>{const admEl=$('#adm');if(!admEl||!slot||admEl.parentElement===slot)return;slot.appendChild(admEl)};
  const showPanel=id=>{nav.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('sel',b.dataset.panel===id));
   panels.querySelectorAll('.owner-panel').forEach(p=>{p.hidden=p.dataset.panel!==id});
   const btn=nav.querySelector(`.nav-btn[data-panel="${id}"]`);const tab=btn&&btn.dataset.adm;
+  if(lab)lab.textContent='Menú · '+(btn&&btn.dataset.label||id);
   const panel=panels.querySelector(`.owner-panel[data-panel="${id}"]`);const slot=panel&&panel.querySelector('.adm-slot');
   if(slot)parkAdm(slot);
+  if(menu)menu.open=false;
   if(tab){admTab=tab;if(st.ses&&st.ses.rol==='dueno'){if(adm)admPaint();else admLoad();
    if(tab==='puestos')ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint())}}};
- nav.onclick=e=>{const b=e.target.closest('.nav-btn');if(!b)return;showPanel(b.dataset.panel)};
+ nav.onclick=e=>{const b=e.target.closest('.nav-btn');if(!b)return;e.preventDefault();showPanel(b.dataset.panel)};
+ document.addEventListener('click',e=>{if(menu&&menu.open&&!menu.contains(e.target))menu.open=false});
  st.showOwnerPanel=showPanel})();
 $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);paintAllTileQtys();paintOwnerStockWarn()};
 function paintStallTabs(puestos,sel){
@@ -402,5 +405,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=35',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=36',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
