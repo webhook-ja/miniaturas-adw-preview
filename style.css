@@ -83,6 +83,9 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 .tile-acts .tile-minus:active,.tile-acts .tile-plus:active{transform:translateY(2px);box-shadow:0 1px 0 var(--k)}
 .line.stock-pend .n{opacity:.65}
 .line.stock-pend .n::after{content:"";display:inline-block;width:.55em;height:.55em;margin-left:.35em;border:2px solid rgba(58,63,75,.25);border-top-color:var(--k);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+.line.low .n{background:var(--r);color:var(--w);border-color:var(--k)}
+.line.zero .n{outline:2px dashed var(--r)}
+.line.low .nm{color:var(--r)}
 .line .n.flash{animation:nflash .18s ease-out}
 @keyframes nflash{50%{transform:scale(1.25)}}
 .login-pin{font-family:Pix;font-size:16px;letter-spacing:2px;font-weight:800;color:var(--k);background:var(--y);border:3px solid var(--k);border-radius:8px;padding:8px 10px;margin:0 0 10px}

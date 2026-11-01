@@ -139,7 +139,7 @@ document.addEventListener('visibilitychange',()=>{
   Promise.all([loadOwner(),loadControl()])}
 });
 /* ---- Dueño ---- */
-$('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);paintAllTileQtys()};
+$('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);paintAllTileQtys();paintOwnerStockWarn()};
 function paintStallTabs(puestos,sel){
  const t=$('#stall-tabs');t.innerHTML='';
  puestos.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='blk'+(p===sel?' sel':'');b.textContent='Puesto '+p;
@@ -152,9 +152,12 @@ async function ensurePines(){if(pines!==null)return pines;if(!st.ses||st.ses.rol
 
 const stockPend={},stockTimers={},stockSaving={};
 function stockKey(puesto,producto){return puesto+'|'+producto}
-function paintStockRow(row,nombre,activo,ini,vend){const quedan=Math.max(0,ini-vend);row.dataset.ini=String(ini);row.dataset.vend=String(vend);
- const num=row.querySelector('.n');if(num)num.textContent=String(ini);
+function paintStockRow(row,nombre,activo,ini,vend){const quedan=Math.max(0,ini-vend);row.dataset.ini=String(ini);row.dataset.vend=String(vend);row.dataset.quedan=String(quedan);
+ const num=row.querySelector('.n');if(num){num.textContent=String(ini);num.classList.toggle('low',quedan<=thr());num.classList.toggle('zero',quedan<=0)}
+ row.classList.toggle('low',quedan<=thr());row.classList.toggle('zero',quedan<=0);
  const nm=row.querySelector('.nm');if(nm)nm.textContent=nombre+(activo===0?' (inactivo)':'')+' · vendidas '+vend+' · quedan '+quedan}
+function paintOwnerStockWarn(){document.querySelectorAll('#stock-list .line').forEach(row=>{
+ const ini=+(row.dataset.ini||0),vend=+(row.dataset.vend||0);paintStockRow(row,(row.querySelector('.nm')?.textContent||'').split(' ·')[0],1,ini,vend)})}
 async function flushStock(key){const p=stockPend[key];if(!p||stockSaving[key])return;stockSaving[key]=1;delete stockPend[key];clearTimeout(stockTimers[key]);delete stockTimers[key];clearTimeout(stockSlow[key]);delete stockSlow[key];
  try{const r=await API.stockGuardar(st.ses.token_dueno,p.puesto,[{producto:p.producto,cantidad_inicial:p.n}]);
   if(!r.ok){alert(r.error||'No se pudo guardar stock');await loadOwner(true);return}
@@ -344,5 +347,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=27',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=28',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
