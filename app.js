@@ -42,14 +42,26 @@ async function loadStall(){const P=st.ses.puesto;try{const r=await API.catalogo(
  st.prods=await QueueDB.get('prods')||[];if(!Object.keys(st.stock).length)st.stock=await QueueDB.get('stock_'+P)||{};await renderGrid()}
 async function pendingDelta(){const m={};(await QueueDB.all()).filter(e=>e._puesto===st.ses.puesto).forEach(e=>m[e.producto]=(m[e.producto]||0)+e.cantidad);return m}
 async function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;const pd=await pendingDelta(),g=$('#grid');g.innerHTML='';
- st.prods.filter(p=>p.id in st.stock).forEach(p=>{const s=st.stock[p.id]+(pd[p.id]||0),b=document.createElement('button');b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'');
+ st.prods.filter(p=>p.id in st.stock).forEach(p=>{const s=st.stock[p.id]+(pd[p.id]||0),b=document.createElement('div');b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'');
   b.style.setProperty('--c',p.color_icono);b.dataset.id=p.id;const img=API.driveImg(p.foto_url);
-  b.innerHTML=`${img?`<img class="ic" alt="" loading="lazy" decoding="async" width="56" height="56" src="${img}">`:`<span class="ic" style="--ic:${p.color_icono}"></span>`}<div class="nm"></div><div class="st">${s}</div>`;
+  b.innerHTML=`${img?`<img class="ic" alt="" loading="lazy" decoding="async" width="56" height="56" src="${img}">`:`<span class="ic" style="--ic:${p.color_icono}"></span>`}<div class="nm"></div><div class="st">${s}</div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
   b.querySelector('.nm').textContent=p.nombre;const im=b.querySelector('img');if(im)im.onerror=()=>{const sp=document.createElement('span');sp.className='ic';sp.style.setProperty('--ic',p.color_icono);im.replaceWith(sp)};
-  b.onclick=()=>sell(p,s);g.append(b)})}
+  b.querySelector('.tile-minus').onclick=()=>sell(p,s);
+  b.querySelector('.tile-plus').onclick=()=>restock(p);
+  b.addEventListener('click',e=>{if(e.target.closest('.tile-acts'))return;sell(p,s)});
+  g.append(b)})}
 const evento=(p,c)=>({id:uuid(),fecha_hora:API.ahoraMadrid(),producto:p,cantidad:c,_puesto:st.ses.puesto,_ts:Date.now()});
 async function sell(p,s){if(s<=0){pop(true);return}const tile=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(tile)tile.classList.add('busy');
  pop();try{const e=evento(p.id,-1);await QueueDB.add(e);await renderGrid();setUndo(e,p);updPend();sync()}finally{const t2=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(t2)t2.classList.remove('busy')}}
+async function lastSaleOf(producto){const all=await QueueDB.all();
+ const mine=all.filter(e=>e._puesto===st.ses.puesto&&e.producto===producto).sort((a,b)=>b._ts-a._ts);
+ const undone=new Set(mine.filter(e=>e.cantidad===1&&e.ref).map(e=>e.ref));
+ for(const e of mine){if(e.cantidad===-1&&!undone.has(e.id))return e}
+ if(st.undo&&st.undo.producto===producto&&!undone.has(st.undo.id))return st.undo;return null}
+async function restock(p){const tile=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(tile)tile.classList.add('busy');
+ pop(true);try{const sale=await lastSaleOf(p.id);const e=sale?{...evento(p.id,1),ref:sale.id}:evento(p.id,1);
+  await QueueDB.add(e);if(sale&&st.undo&&st.undo.id===sale.id){st.undo=null;$('#undo').hidden=true}
+  await renderGrid();updPend();sync()}finally{const t2=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(t2)t2.classList.remove('busy')}}
 function setUndo(e,p){st.undo=e;$('#undo-txt').textContent='−1 '+p.nombre;$('#undo').hidden=false;clearTimeout(st.ut);st.ut=setTimeout(()=>{$('#undo').hidden=true;st.undo=null},15000)}
 $('#undo-btn').onclick=async()=>{const v=st.undo;if(!v)return;st.undo=null;$('#undo').hidden=true;pop(true);
  await QueueDB.add({...evento(v.producto,1),ref:v.id});await renderGrid();updPend();sync()};

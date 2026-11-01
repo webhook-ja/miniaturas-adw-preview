@@ -84,7 +84,7 @@ const API=(()=>{
    for(const v of q.ventas){const id=String(v&&v.id||'');if(!UUID4.test(id)){rechazadas.push({id,motivo:'ID_INVALIDO'});continue}if(vistos.has(id)){duplicadas.push(id);continue}
     const c=Number(v.cantidad);if(c!==-1&&c!==1){rechazadas.push({id,motivo:'CANTIDAD_INVALIDA'});continue}if(!(v.producto in precios)){rechazadas.push({id,motivo:'PRODUCTO_DESCONOCIDO'});continue}
     if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v.fecha_hora||'')){rechazadas.push({id,motivo:'FECHA_INVALIDA'});continue}
-    if(c===1){if(!v.ref){rechazadas.push({id,motivo:'REF_REQUERIDA'});continue}const o=d.ventas.find(r=>r.id===v.ref);
+    if(c===1&&v.ref){const o=d.ventas.find(r=>r.id===v.ref);
      if(!o||o.cantidad!==-1||o.puesto!==t.p||o.producto!==v.producto){rechazadas.push({id,motivo:'REF_INVALIDA'});continue}
      if(d.ventas.some(r=>r.ref_id===v.ref)){rechazadas.push({id,motivo:'REF_YA_DESHECHA'});continue}}
     if(!d.productos.find(p=>p.id===v.producto).activo)marcadas.push({id,motivo:'PRODUCTO_INACTIVO'});
