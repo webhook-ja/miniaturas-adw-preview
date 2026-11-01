@@ -54,8 +54,10 @@ async function sync(){if(st.syncing||!navigator.onLine||!st.ses||st.ses.rol!=='v
   setStock(r.stock);q=q.filter(e=>!ack.includes(e.id));if(!ack.length)break}
  st.fallos=0;clearTimeout(st.bo);await renderGrid()
 }catch(e){backoff()}finally{st.syncing=false;updPend()}}
-async function updPend(){const n=await QueueDB.count();$('#pend').textContent='⏳'+n;$('#net').textContent=navigator.onLine?'ONLINE':'OFFLINE';$('#net').className='pill '+(navigator.onLine?'on':'off')}
-addEventListener('online',()=>{st.fallos=0;updPend();sync()});addEventListener('offline',updPend);setInterval(async()=>{if(await QueueDB.count())sync()},30000); /* sin red si la cola está vacía */
+async function pendMine(){const all=await QueueDB.all();if(st.ses&&st.ses.rol==='vendedor')return all.filter(e=>e._puesto===st.ses.puesto).length;return all.length}
+async function purgeOrphanQueue(active){const set=new Set(active||[]);const orphans=(await QueueDB.all()).filter(e=>e._puesto&&!set.has(e._puesto));if(orphans.length)await QueueDB.remove(orphans.map(e=>e.id));return orphans.length}
+async function updPend(){const n=await pendMine();$('#pend').textContent='⏳'+n;$('#net').textContent=navigator.onLine?'ONLINE':'OFFLINE';$('#net').className='pill '+(navigator.onLine?'on':'off')}
+addEventListener('online',()=>{st.fallos=0;updPend();sync()});addEventListener('offline',updPend);setInterval(async()=>{if(st.ses&&st.ses.rol==='vendedor'&&await pendMine())sync()},30000); /* sin red si la cola está vacía */
 document.addEventListener('visibilitychange',()=>{
  if(document.hidden){borrarPines();return}
  sync();
@@ -71,6 +73,7 @@ function paintStallTabs(puestos,sel){
 async function loadOwner(){if(!st.ses||st.ses.rol!=='dueno')return;const T=st.ses.token_dueno;const gen=++ownerGen;if(!adm)admLoad();
  try{const e=await API.estadoDueno(T);if(gen!==ownerGen)return;if(!e.ok){if(tokenMalo(e))return;throw new Error(e.error)}
  st.puestosDueno=e.puestos;st.ownerStall=e.puestos.includes(st.ownerStall)?st.ownerStall:e.puestos[0];
+ await purgeOrphanQueue(e.puestos);updPend();
  paintStallTabs(e.puestos,st.ownerStall);
  const names=Object.fromEntries(e.productos.map(p=>[p[0],{nombre:p[1],activo:p[4]}])),L=$('#stock-list');L.innerHTML='';
  (e.stock[st.ownerStall]||[]).forEach(([producto,ini,vend,quedan])=>{const p=names[producto]||{nombre:producto},d=document.createElement('div');d.className='line';
@@ -160,7 +163,7 @@ async function hojaCambio(){await new Promise(r=>setTimeout(r,1800));borrarPines
 $('#hoja-ok').onclick=async()=>{const u=$('#hoja-url').value.trim();
  if(/docs\.google\.com\/spreadsheets/.test(u))return hojaMsg('Eso es la URL de la hoja de cálculo. '+COMO);
  if(!EXEC.test(u)&&!DEV.test(u))return hojaMsg('URL no válida. '+COMO);
- if(await QueueDB.count())return hojaMsg('Hay ventas pendientes de enviar. Sincroniza antes de cambiar de hoja.');
+ {const ps=await QueueDB.get('puestos')||[];await purgeOrphanQueue((ps||[]).map(p=>p.id||p));if(await QueueDB.count())return hojaMsg('Hay ventas pendientes de enviar. Sincroniza antes de cambiar de hoja.');}
  hojaMsg('Probando conexión…');let r;try{r=await API.ping(u)}catch(e){r={ok:false,error:e.message||'Sin respuesta'}}
  if(r&&r.ok&&r.app!=='miniaturas')return hojaMsg('Esa URL responde, pero no es la app de Miniaturas (app≠miniaturas). Implementa el Code.gs de Miniaturas en tu hoja. '+COMO);
  if(!r||!r.ok)return hojaMsg('No se pudo conectar ('+((r&&(r.mensaje||r.error))||'respuesta no válida')+'). Revisa que la implementación tenga acceso «Cualquiera». '+COMO);
@@ -168,5 +171,5 @@ $('#hoja-ok').onclick=async()=>{const u=$('#hoja-url').value.trim();
 $('#hoja-off').onclick=async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);hojaCambio()};
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=10',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='10')return;sessionStorage.setItem('sw_reload','10');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=12',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='12')return;sessionStorage.setItem('sw_reload','12');location.reload()})}
