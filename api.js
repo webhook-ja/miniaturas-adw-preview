@@ -21,8 +21,9 @@ const API=(()=>{
  const stockDe=(d,p)=>Object.entries(d.stock[p]||{}).map(([producto,ini])=>{const v=d.ventas.filter(r=>r.puesto===p&&r.producto===producto).reduce((a,r)=>a-r.cantidad,0);return{producto,cantidad_inicial:ini,vendidas:v,quedan:ini-v}});
  const UUID4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
  const A={
-  puestos(q,d){const pins={};d.vendedores.filter(v=>v.activo&&v.pin).forEach(v=>{pins[v.puesto]=v.pin});
-   return{puestos:d.puestosT.filter(p=>p.activo).map(p=>p.id).sort(),demo_pins:pins}},
+  puestos(q,d){const pins={},act=d.puestosT.filter(p=>p.activo),nombres={};act.forEach(p=>{nombres[p.id]=p.nombre||p.id});
+   d.vendedores.filter(v=>v.activo&&v.pin).forEach(v=>{pins[v.puesto]=v.pin});
+   return{puestos:act.map(p=>p.id).sort(),puestos_nombres:nombres,demo_pins:pins}},
   demo_limpiar(q,d){untok(q.token_dueno,'dueno');d.puestosT.forEach(p=>p.activo=0);d.vendedores.forEach(v=>v.activo=false);
    d.productos.forEach(p=>{if(!['F01','F02','F03','F04'].includes(p.id))p.activo=0});d.stock={};d.asignaciones=[];
    return{ok_limpiar:true,puestos_activos:0,vendedores_activos:0,figuras_activas:d.productos.filter(p=>p.activo).length}},
@@ -53,8 +54,8 @@ const API=(()=>{
    if(q.desde===q.hasta||![q.desde,q.hasta].every(id=>d.puestosT.some(p=>p.id===id&&p.activo)))throw'PUESTO_INVALIDO';if(!d.productos.some(p=>p.id===q.producto))throw'PRODUCTO_DESCONOCIDO';
    const s=stockDe(d,q.desde).find(x=>x.producto===q.producto);if(!s||s.quedan<n)throw'STOCK_INSUFICIENTE';
    d.stock[q.desde][q.producto]-=n;d.stock[q.hasta]=d.stock[q.hasta]||{};d.stock[q.hasta][q.producto]=(d.stock[q.hasta][q.producto]||0)+n;return{desde:stockDe(d,q.desde),hasta:stockDe(d,q.hasta)}},
-  estado_dueno(q,d){untok(q.token_dueno,'dueno');return{productos:d.productos.map(p=>[p.id,p.nombre,p.precio,p.coste,p.activo]),puestos:A.puestos(q,d).puestos,
-   stock:Object.fromEntries(A.puestos(q,d).puestos.map(pu=>[pu,stockDe(d,pu).map(s=>[s.producto,s.cantidad_inicial,s.vendidas,s.quedan])]))}},
+  estado_dueno(q,d){untok(q.token_dueno,'dueno');const pr=A.puestos(q,d);return{productos:d.productos.map(p=>[p.id,p.nombre,p.precio,p.coste,p.activo]),puestos:pr.puestos,puestos_nombres:pr.puestos_nombres,
+   stock:Object.fromEntries(pr.puestos.map(pu=>[pu,stockDe(d,pu).map(s=>[s.producto,s.cantidad_inicial,s.vendidas,s.quedan])]))}},
   /* pines_ver / pin_crear_o_cambiar como en Code.gs: el servidor genera el PIN nuevo */
   pines_ver(q,d){untok(q.token_dueno,'dueno');return{pines:d.vendedores.filter(v=>v.activo).sort((a,b)=>a.puesto.localeCompare(b.puesto)).map(v=>({puesto:v.puesto,vendedor:v.id,nombre:v.nombre,pin:v.pin,ejemplo:true})),no_store:true}},
   pin_crear_o_cambiar(q,d){untok(q.token_dueno,'dueno');const c=q.vendedor_id?d.vendedores.filter(v=>v.activo&&v.id===q.vendedor_id):d.vendedores.filter(v=>v.activo&&v.puesto===q.puesto);

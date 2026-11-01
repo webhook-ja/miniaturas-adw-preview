@@ -20,8 +20,11 @@ function paintLoginPin(){const el=$('#login-pin');if(!el)return;const who=$('#wh
  if(who==='dueno'){el.hidden=false;el.textContent='PIN dueño · 999999';return}
  const pin=st.demoPins&&st.demoPins[who];if(pin){el.hidden=false;el.textContent='PIN · '+pin;return}
  el.hidden=true;el.textContent=''}
-async function loadPuestos(){let ps=await QueueDB.get('puestos');try{const r=await API.puestos();if(r.ok){ps=r.puestos;QueueDB.set('puestos',ps);st.demoPins=r.demo_pins||{}}}catch(e){}
- $('#who').innerHTML=(ps||[]).map(p=>`<option value="${p}">Puesto ${p}</option>`).join('')+'<option value="dueno">DUEÑO</option>';
+function mergePuestoNames(map){if(!map||typeof map!=='object')return;st.puestoNames=Object.assign(st.puestoNames||{},map)}
+function puLabel(id){const k=String(id??'');if(adm&&adm.puestos){const p=adm.puestos.find(x=>String(x.id)===k);if(p&&p.nombre)return p.nombre}
+ if(st.puestoNames&&st.puestoNames[k])return st.puestoNames[k];return k}
+async function loadPuestos(){let ps=await QueueDB.get('puestos');try{const r=await API.puestos();if(r.ok){ps=r.puestos;QueueDB.set('puestos',ps);st.demoPins=r.demo_pins||{};mergePuestoNames(r.puestos_nombres)}}catch(e){}
+ $('#who').innerHTML=(ps||[]).map(p=>`<option value="${p}">${esc(puLabel(p))}</option>`).join('')+'<option value="dueno">DUEÑO</option>';
  paintLoginPin()}
 $('#who').onchange=paintLoginPin;
 $('#be').textContent=API.backend==='mock'?'MOCK · DATOS DE EJEMPLO':'Apps Script';
@@ -142,7 +145,7 @@ document.addEventListener('visibilitychange',()=>{
 $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);paintAllTileQtys();paintOwnerStockWarn()};
 function paintStallTabs(puestos,sel){
  const t=$('#stall-tabs');t.innerHTML='';
- puestos.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='blk'+(p===sel?' sel':'');b.textContent='Puesto '+p;
+ puestos.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='blk'+(p===sel?' sel':'');b.textContent=puLabel(p);
   b.onclick=()=>{if(st.ownerStall===p)return;st.ownerStall=p;paintStallTabs(puestos,p);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner(true)};t.append(b)});
 }
 async function ensurePines(){if(pines!==null)return pines;if(!st.ses||st.ses.rol!=='dueno')return null;
@@ -169,10 +172,10 @@ async function flushStock(key){const p=stockPend[key];if(!p||stockSaving[key])re
 async function flushAllStock(){Object.keys(stockTimers).forEach(k=>{clearTimeout(stockTimers[k]);delete stockTimers[k]});Object.keys(stockSlow).forEach(k=>{clearTimeout(stockSlow[k]);delete stockSlow[k]});
  const keys=new Set([...Object.keys(stockPend),...Object.keys(stockSaving)]);await Promise.all([...keys].map(k=>flushStock(k)));
  while(Object.keys(stockSaving).length||Object.keys(stockPend).length)await new Promise(r=>setTimeout(r,40))}
-async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!skipFlush)await flushAllStock();const T=st.ses.token_dueno;const gen=++ownerGen;if(!adm)admLoad();
+async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!skipFlush)await flushAllStock();const T=st.ses.token_dueno;const gen=++ownerGen;if(!adm)await admLoad();
  try{const eP=API.estadoDueno(T),hP=API.ventasHoy(T);const e=await eP;if(gen!==ownerGen)return;if(!e.ok){if(tokenMalo(e))return;throw new Error(e.error)}
  st.ownerAt=Date.now();st.puestosDueno=e.puestos;st.ownerStall=e.puestos.includes(st.ownerStall)?st.ownerStall:e.puestos[0];
- if(adm)adm.stockByPu=e.stock||{};
+ mergePuestoNames(e.puestos_nombres);if(adm){adm.stockByPu=e.stock||{};if(adm.puestos)mergePuestoNames(Object.fromEntries(adm.puestos.map(p=>[p.id,p.nombre])))}
  purgeOrphanQueue(e.puestos);updPend();
  paintStallTabs(e.puestos,st.ownerStall);
  const names=Object.fromEntries(e.productos.map(p=>[p[0],{nombre:p[1],activo:p[4]}])),L=$('#stock-list');L.innerHTML='';
@@ -182,11 +185,12 @@ async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!
   m.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur-1,d,p)};
   pl.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur+1,d,p)};L.append(d)});
  if(!L.children.length)L.innerHTML='<p class="msg">Sin stock en este puesto. Usa + en otro puesto o Mover stock.</p>';
+ if(adm&&admTab==='figuras')admPaint();
  const h=await hP;if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
  const nm=k=>(names[k]||{nombre:k}).nombre;
  $('#sales').innerHTML=`<table><tr><th>Hoy ${h.fecha}</th><th>Uds</th><th>€</th><th>Benef.</th></tr><tr><td>TOTAL</td><td class="n">${h.totales.unidades}</td><td class="n">${h.totales.importe}</td><td class="n">${h.totales.beneficio}</td></tr></table>`+
-  '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${pu}</td><td>${nm(pr)}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
-  '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${x.puesto} · ${x.vendedor}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
+  '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${esc(puLabel(pu))}</td><td>${esc(nm(pr))}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
+  '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${esc(puLabel(x.puesto))} · ${esc(x.vendedor)}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
 }catch(e){if(gen!==ownerGen)return;$('#sales').innerHTML='<p class="msg">Sin conexión o error: '+(e&&e.message||e)+'</p>'}}
 const stockSlow={};
 function adj(producto,n,row,meta){if(n<0)return;pop(n>+(row.dataset.ini||0));
@@ -217,7 +221,8 @@ async function verPines(){await ensurePines();if(adm&&admTab==='puestos')admPain
 var adm=null,admTab='figuras';
 async function admCall(accion,extra){const r=await API.admin(accion,st.ses.token_dueno,extra).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok&&tokenMalo(r))throw 0;return r}
 async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;
- if(!adm.stockByPu){try{const e=await API.estadoDueno(st.ses.token_dueno);if(e&&e.ok)adm.stockByPu=e.stock||{}}catch(_){adm.stockByPu=adm.stockByPu||{}}}
+ if(adm.puestos)mergePuestoNames(Object.fromEntries(adm.puestos.map(p=>[p.id,p.nombre])));
+ if(!adm.stockByPu){try{const e=await API.estadoDueno(st.ses.token_dueno);if(e&&e.ok){adm.stockByPu=e.stock||{};mergePuestoNames(e.puestos_nombres)}}catch(_){adm.stockByPu=adm.stockByPu||{}}}
  admPaint();if(admTab==='puestos')ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint())}
 function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$('#dlg'),okb=$('#dlg-ok');
  if(D.open){try{D.close('no')}catch(e){}}
@@ -227,10 +232,10 @@ function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$(
  D.onclose=()=>{if(D.returnValue!=='ok')return finish(null);finish(Object.fromEntries(new FormData($('#dlg-f'))))};
  D.returnValue='';
  try{D.showModal()}catch(e){alert('No se pudo abrir el formulario');finish(null)}})}
-const pName=id=>(adm.puestos.find(p=>p.id===id)||{nombre:id}).nombre,actP=()=>adm.puestos.filter(p=>p.activo);
+const pName=id=>puLabel(id),actP=()=>adm.puestos.filter(p=>p.activo);
 function fila(txt,act,del,btns){return`<div class="line${act?'':' del'}"><span class="nm">${txt}</span>${act?btns:'<span class="tag">BORRADO</span>'}</div>`}
 function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.classList.toggle('sel',b.dataset.t===admTab));const A=$('#adm');let h='';
- if(admTab==='figuras'){const figPuestos=fid=>{const m=adm.stockByPu||{},ps=Object.keys(m).filter(pu=>(m[pu]||[]).some(s=>String(s[0])===String(fid)));return ps.length?ps.join(','):'sin puesto'};
+ if(admTab==='figuras'){const figPuestos=fid=>{const m=adm.stockByPu||{},ps=Object.keys(m).filter(pu=>(m[pu]||[]).some(s=>String(s[0])===String(fid)));return ps.length?ps.map(puLabel).join(', '):'sin puesto'};
   h='<p class="hint2">Cada puesto tiene su catálogo: asigna la figura a un puesto (con stock). La misma figura puede estar en varios puestos.</p><button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} € · <span class="tag">${esc(figPuestos(f.id))}</span>`,f.activo,0,
   `<button class="blk sm" data-a="fig-ed" data-id="${f.id}">Editar</button><button class="blk sm red" data-a="fig-del" data-id="${f.id}">Borrar</button>`)).join('')}
  if(admTab==='puestos'){const nP=adm.puestos.filter(p=>p.activo).length,capP=nP>=3;
@@ -349,5 +354,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=28',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=29',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
