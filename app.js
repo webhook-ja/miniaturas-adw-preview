@@ -9,7 +9,7 @@ let ac;function pop(up){try{ac=ac||new (window.AudioContext||window.webkitAudioC
  o.type='square';o.frequency.setValueAtTime(up?300:900,t);o.frequency.exponentialRampToValueAtTime(up?900:180,t+.09);
  g.gain.setValueAtTime(.25,t);g.gain.exponentialRampToValueAtTime(.001,t+.12);o.connect(g).connect(ac.destination);o.start(t);o.stop(t+.13)}catch(e){}}
 let pines=null,ownerGen=0;
-function borrarPines(){pines=null;const e=document.getElementById('pines');if(e)e.innerHTML=''}
+function borrarPines(){pines=null;if(adm&&admTab==='puestos')admPaint()}
 function clearAdm(){adm=null;const m=document.getElementById('adm');if(m)m.innerHTML=''}
 function show(v){borrarPines();if(v==='login')clearAdm();document.querySelectorAll('.view').forEach(x=>x.hidden=x.id!=='v-'+v);$('#logout').hidden=v==='login'}
 const saveSes=s=>{st.ses=s;QueueDB.set('ses',s)};
@@ -74,7 +74,7 @@ addEventListener('online',()=>{st.fallos=0;updPend();sync()});addEventListener('
 document.addEventListener('visibilitychange',()=>{
  if(document.hidden){borrarPines();return}
  sync();
- if(st.ses&&st.ses.rol==='dueno'){if(!adm)admLoad();loadOwner();loadControl()}
+ if(st.ses&&st.ses.rol==='dueno'){if(!adm)admLoad();else if(admTab==='puestos')ensurePines().then(()=>admPaint());loadOwner();loadControl()}
 });
 /* ---- Dueño ---- */
 $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);renderGrid()};
@@ -144,23 +144,15 @@ async function loadControl(){if(!st.ses||st.ses.rol!=='dueno')return;const box=$
    h+=`<div class="line"><span class="nm"><b>${esc(v.nombre)}</b> · activo ${esc(v.puesto_activo||'—')}<br><span class="hint2">Puestos: ${hist}</span><br>Hoy ${v.hoy?.vendidas||0} vend. / ${v.hoy?.deshechas||0} desh. · Total ${v.total?.vendidas||0} / ${v.total?.deshechas||0}</span></div>`;
   });
   box.innerHTML=h}catch(e){box.innerHTML='<p class="msg">Sin conexión al control</p>'}}
-/* ---- Puestos y PIN (solo dueño, solo en memoria) ---- */
-async function verPines(){if(!st.ses||st.ses.rol!=='dueno')return;const r=await API.pinesVer(st.ses.token_dueno).catch(e=>({ok:false,error:'Sin conexión'}));
- if(!r.ok){if(tokenMalo(r))return;$('#pines').innerHTML='<p class="msg"></p>';$('#pines .msg').textContent=r.error;return}pines=r.pines;pintarPines();loadPuestos()}
-
-function pintarPines(){const P=$('#pines');P.innerHTML='';const con=new Set((pines||[]).map(x=>x.puesto));
- (st.puestosDueno||[]).filter(p=>!con.has(p)).forEach(p=>pines.push({puesto:p,vendedor:'',pin:''}));pines.sort((a,b)=>a.puesto.localeCompare(b.puesto));
- (pines||[]).forEach((x,i)=>{const d=document.createElement('div');d.className='line';
- d.innerHTML=`<span class="nm"></span><span class="pin"></span><button class="blk sm">Copiar</button><button class="blk sm blue">${x.pin?'Cambiar PIN':'Crear PIN'}</button>`;
- d.querySelector('.nm').textContent=`Puesto ${i+1} (${x.puesto}) · ${x.nombre||('vendedor '+x.vendedor)}${x.ejemplo?' · EJEMPLO':''}`;d.querySelector('.pin').textContent=x.pin||'— sin PIN guardado —';if(!x.pin)d.querySelector('button').hidden=true;
- const[cp,ch]=d.querySelectorAll('button');cp.onclick=async()=>{try{await navigator.clipboard.writeText(x.pin);cp.textContent='¡Copiado!'}catch(e){cp.textContent='No se pudo'}setTimeout(()=>cp.textContent='Copiar',1500)};
- ch.onclick=()=>withBusy(ch,async()=>{if(!confirm('¿Generar un PIN nuevo de 6 cifras para '+x.vendedor+' ('+x.puesto+')? El anterior dejará de valer.'))return;
-  const r=await API.pinCambiar(st.ses.token_dueno,x.puesto,x.vendedor||undefined).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok)return alert(r.error);x.pin=r.pin;x.vendedor=r.vendedor;if(r.nombre)x.nombre=r.nombre;pintarPines();loadPuestos()});P.append(d)})}
-$('#pines-ver').onclick=()=>withBusy($('#pines-ver'),verPines);
+/* ---- PIN en memoria (se borra al ocultar pestaña / salir). Va en la fila de Gestión › Puestos. ---- */
+async function verPines(){await ensurePines();if(adm&&admTab==='puestos')admPaint();loadPuestos()}
 /* ---- Gestión (CRUD dueño, borrado lógico). Datos solo en memoria. ---- */
 var adm=null,admTab='figuras';
 async function admCall(accion,extra){const r=await API.admin(accion,st.ses.token_dueno,extra).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok&&tokenMalo(r))throw 0;return r}
-async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;admPaint()}
+async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;
+ try{const e=await API.estadoDueno(st.ses.token_dueno);if(e&&e.ok)adm.stockByPu=e.stock||{}}catch(_){adm.stockByPu=adm.stockByPu||{}}
+ if(admTab==='puestos')await ensurePines();
+ admPaint()}
 function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$('#dlg'),okb=$('#dlg-ok');
  if(D.open){try{D.close('no')}catch(e){}}
  busyBtn(okb,0);$('#dlg-t').textContent=titulo;$('#dlg-m').textContent='';okb.textContent=okTxt;
@@ -172,19 +164,34 @@ function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$(
 const pName=id=>(adm.puestos.find(p=>p.id===id)||{nombre:id}).nombre,actP=()=>adm.puestos.filter(p=>p.activo);
 function fila(txt,act,del,btns){return`<div class="line${act?'':' del'}"><span class="nm">${txt}</span>${act?btns:'<span class="tag">BORRADO</span>'}</div>`}
 function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.classList.toggle('sel',b.dataset.t===admTab));const A=$('#adm');let h='';
- if(admTab==='figuras'){h='<button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} €`,f.activo,0,
+ if(admTab==='figuras'){const figPuestos=fid=>{const m=adm.stockByPu||{},ps=Object.keys(m).filter(pu=>(m[pu]||[]).some(s=>String(s[0])===String(fid)));return ps.length?ps.join(','):'sin puesto'};
+  h='<p class="hint2">Cada puesto tiene su catálogo: asigna la figura a un puesto (con stock). La misma figura puede estar en varios puestos.</p><button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} € · <span class="tag">${esc(figPuestos(f.id))}</span>`,f.activo,0,
   `<button class="blk sm" data-a="fig-ed" data-id="${f.id}">Editar</button><button class="blk sm red" data-a="fig-del" data-id="${f.id}">Borrar</button>`)).join('')}
  if(admTab==='puestos'){const nP=adm.puestos.filter(p=>p.activo).length,capP=nP>=3;
-  h=(capP?'<p class="hint2">Demo: máximo 3 puestos</p>':'<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>')+adm.puestos.map(p=>fila(`${esc(p.nombre)} <span class="tag">${p.id}</span> · ${adm.vendedores.filter(v=>v.activo&&v.puesto===p.id).length} vend.`,p.activo,0,
-  `<button class="blk sm" data-a="pue-ed" data-id="${p.id}">Editar</button><button class="blk sm red" data-a="pue-del" data-id="${p.id}">Borrar</button>`)).join('')}
+  h='<p class="hint2">Una fila por puesto: nombre · vendedor · PIN. El PIN se borra al ocultar la pestaña o salir.</p>'+(capP?'<p class="hint2">Demo: máximo 3 puestos</p>':'')+(capP?'':'<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>')+(pines?'' :'<button class="blk blue add" data-a="pin-show">Mostrar PINES</button>');
+  h+=adm.puestos.map(p=>{if(!p.activo)return fila(`${esc(p.nombre)} <span class="tag">${p.id}</span>`,0,0,'');
+   const ven=(adm.vendedores||[]).find(v=>v.activo&&String(v.puesto)===String(p.id));
+   const px=(pines||[]).find(x=>String(x.puesto)===String(p.id));
+   const pinTxt=pines==null?'······':(px&&px.pin?px.pin:'— sin PIN —');
+   const pinBtns=pines==null?'':((px&&px.pin?`<button class="blk sm" data-a="pin-copy" data-id="${p.id}" data-vid="${esc(px.vendedor||(ven&&ven.id)||'')}">Copiar PIN</button>`:'')+
+    (ven||px?`<button class="blk sm blue" data-a="pin-ch" data-id="${p.id}" data-vid="${esc((px&&px.vendedor)||(ven&&ven.id)||'')}">${px&&px.pin?'Cambiar PIN':'Crear PIN'}</button>`:''));
+   return fila(`<b>${esc(p.nombre)}</b> · ${esc(ven?ven.nombre:'sin vendedor')} · <span class="pin">${esc(pinTxt)}</span>`,1,0,
+    `${pinBtns}<button class="blk sm" data-a="pue-ed" data-id="${p.id}">Editar</button><button class="blk sm red" data-a="pue-del" data-id="${p.id}">Borrar</button>`)}).join('')}
  if(admTab==='vendedores'){const nV=adm.vendedores.filter(v=>v.activo).length,capV=nV>=3;
   h=(capV?'<p class="hint2">Demo: máximo 3 vendedores</p>':'<button class="blk green add" data-a="ven-new">+ Nuevo vendedor</button>')+adm.vendedores.map(v=>fila(`${esc(v.nombre)} <span class="tag">${v.id}</span> · ${esc(pName(v.puesto))}`,v.activo,0,
   `<button class="blk sm" data-a="ven-ed" data-id="${v.id}">Editar</button><button class="blk sm blue" data-a="ven-mov" data-id="${v.id}">Mover</button><button class="blk sm red" data-a="ven-del" data-id="${v.id}">Borrar</button>`)).join('')}
- if(admTab==='stock'){h='<p class="hint2">Pasa unidades del stock inicial de un puesto a otro (no puede superar lo que queda).</p><button class="blk blue add" data-a="stk-mov">Mover stock entre puestos</button>'}
+ if(admTab==='stock'){h='<p class="hint2">Mueve unidades entre puestos que llevan la misma figura. Si el destino aún no la tenía, queda asignada allí.</p><button class="blk blue add" data-a="stk-mov">Mover stock entre puestos</button>'}
  A.innerHTML=h}
 function admMsg(t){let m=$('#adm-msg');if(!m){m=document.createElement('p');m.id='adm-msg';m.className='msg';const A=$('#adm');if(A)A.prepend(m)}m.textContent=t||'';m.hidden=!t}
-document.getElementById('adm-tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;admTab=t;adm?admPaint():admLoad()};
+document.getElementById('adm-tabs').onclick=async e=>{const t=e.target.dataset.t;if(!t)return;admTab=t;if(t==='puestos'&&st.ses&&st.ses.rol==='dueno')await ensurePines();adm?admPaint():admLoad()};
 document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b||b.dataset.lock==='1')return;const a=b.dataset.a,id=b.dataset.id;let r,v;
+ if(a==='pin-show'){b.dataset.lock='1';try{await withBusy(b,async()=>{await ensurePines();admPaint();loadPuestos()})}finally{delete b.dataset.lock}return}
+ if(a==='pin-copy'){const px=(pines||[]).find(x=>String(x.puesto)===String(id));if(!px||!px.pin)return alert('No hay PIN visible');
+  try{await navigator.clipboard.writeText(px.pin);b.textContent='¡Copiado!'}catch(_){b.textContent='No se pudo'}setTimeout(()=>b.textContent='Copiar PIN',1500);return}
+ if(a==='pin-ch'){const vid=b.dataset.vid||undefined;const puN=(adm.puestos.find(p=>p.id===id)||{}).nombre||id;
+  if(!confirm('¿Generar un PIN nuevo de 6 cifras para '+puN+'? El anterior dejará de valer.'))return;
+  b.dataset.lock='1';try{await withBusy(b,async()=>{const q=await API.pinCambiar(st.ses.token_dueno,id,vid||undefined).catch(()=>({ok:false,error:'Sin conexión'}));
+   if(!q.ok)return alert(q.error);pines=null;await ensurePines();admPaint();loadPuestos();alert('PIN nuevo: '+q.pin)})}finally{delete b.dataset.lock}return}
  if(a.endsWith('-del')){if(!adm){await admLoad();if(!adm)return alert('No se pudo cargar la gestión')}
   const x=adm.figuras.find(y=>y.id===id)||adm.puestos.find(y=>y.id===id)||adm.vendedores.find(y=>y.id===id);if(!x)return alert('No se encontró el elemento');
   const msg=a==='pue-del'
@@ -196,8 +203,29 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
  if(!adm){await admLoad();if(!adm)return alert('No se pudo cargar la gestión')}
  const fig=adm.figuras.find(x=>x.id===id),pu=adm.puestos.find(x=>x.id===id),ve=adm.vendedores.find(x=>x.id===id),PO=actP().map(p=>[p.id,p.nombre]);
  const E={PUESTO_CON_VENDEDORES:'Este puesto aún tiene vendedores activos. Muévelos o bórralos antes.',PUESTO_INVALIDO:'Puesto no encontrado.',VENDEDOR_DESCONOCIDO:'Vendedor no encontrado.',DEMO_MAX_PUESTOS:'Demo: máximo 3 puestos.',DEMO_MAX_VENDEDORES:'Demo: máximo 3 vendedores.'};
- if(a==='fig-new'||a==='fig-ed'){v=await form(fig?'Editar figura':'Nueva figura',[{l:'Nombre',n:'nombre',v:fig&&fig.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?fig.precio:''},{l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?fig.coste:0},{l:'Color',n:'color_icono',t:'color',v:(fig&&fig.color_icono)||'#7a9cc6'},{l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:(fig&&fig.foto_url)||''}]);
-  if(v){if(!v.foto_url)delete v.foto_url;busyBtn(b,1);try{r=await admCall('figura_guardar',{figura:{...(fig?{id:fig.id}:{}),...v}})}finally{busyBtn(b,0)}}}
+ if(a==='fig-new'||a==='fig-ed'){
+  if(!PO.length)return alert('Crea un puesto antes de asignar productos.');
+  const est=await API.estadoDueno(st.ses.token_dueno).catch(()=>({ok:false}));
+  const stockByPu=(est&&est.ok&&est.stock)||{};
+  const enPuesto=pu=>(stockByPu[pu]||[]).some(s=>String(s[0])===String(fig&&fig.id));
+  const puestosCon=PO.map(p=>p[0]).filter(enPuesto);
+  const defPu=(fig&&puestosCon.includes(st.ownerStall)?st.ownerStall:null)||puestosCon[0]||st.ownerStall||PO[0][0];
+  const curIni=+(((stockByPu[defPu]||[]).find(s=>String(s[0])===String(fig&&fig.id))||[])[1]||0);
+  const fp=form(fig?'Editar figura':'Nueva figura',[
+   {l:'Nombre',n:'nombre',v:fig&&fig.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?fig.precio:''},
+   {l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?fig.coste:0},{l:'Color',n:'color_icono',t:'color',v:(fig&&fig.color_icono)||'#7a9cc6'},
+   {l:'Puesto (catálogo de este puesto)',n:'puesto',op:PO,v:defPu},{l:'Stock inicial en ese puesto',n:'stock_ini',t:'number',v:curIni},
+   {l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:(fig&&fig.foto_url)||''}]);
+  queueMicrotask(()=>{$('#dlg-m').textContent=fig?'Elige un puesto para fijar o añadir stock ahí. No quita la figura de otros puestos.':'Se asigna al puesto elegido; luego puedes añadirla a otro editándola o con Mover stock.'});
+  v=await fp;
+  if(v){const puesto=v.puesto,stockIni=Math.max(0,Math.floor(+v.stock_ini||0));delete v.puesto;delete v.stock_ini;if(!v.foto_url)delete v.foto_url;
+   if(!puesto||!PO.some(p=>p[0]===puesto))return alert('Elige un puesto válido.');
+   const otros=(stockByPu[puesto]||[]).filter(s=>{const pid=String(s[0]);if(fig&&pid===String(fig.id))return false;const fx=adm.figuras.find(y=>y.id===pid);return fx&&fx.activo});
+   if(otros.length>=4)return alert('Demo: máximo 4 productos por puesto.');
+   busyBtn(b,1);try{r=await admCall('figura_guardar',{figura:{...(fig?{id:fig.id}:{}),...v}});
+    if(r&&r.ok&&r.figura&&r.figura.id){const q=await API.stockGuardar(st.ses.token_dueno,puesto,[{producto:r.figura.id,cantidad_inicial:stockIni}]).catch(()=>({ok:false,error:'Sin conexión'}));
+     if(!q.ok)alert('Figura guardada, pero no se asignó al puesto: '+(q.error||'error'));
+     else{adm.stockByPu=adm.stockByPu||{};adm.stockByPu[puesto]=q.stock?q.stock.map(s=>[s.producto,s.cantidad_inicial,s.vendidas,s.quedan]):(adm.stockByPu[puesto]||[])}}}finally{busyBtn(b,0)}}}
  if(a==='pue-alta'){if(adm.puestos.filter(p=>p.activo).length>=3)return alert('Demo: máximo 3 puestos');
   const atVend=adm.vendedores.filter(x=>x.activo).length>=3;
   if(atVend&&!confirm('Ya hay 3 vendedores (máximo demo). ¿Crear el puesto sin vendedor nuevo?'))return;
@@ -205,21 +233,26 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
   try{const N=1+Math.max(0,...adm.puestos.map(p=>+String(p.id).slice(1)||0));r=await admCall('puesto_guardar',{puesto:{nombre:'Puesto '+N}});
    if(!r.ok){admMsg('');return alert(E[r.error]||('Error: '+r.error))}const np=r.puesto;let nv=null,pin=null;
    if(!atVend){r=await admCall('vendedor_guardar',{vendedor:{nombre:'Vendedor '+np.nombre,puesto:np.id}});if(!r.ok){await admLoad();admMsg('');return alert('Puesto creado, pero falta el vendedor: '+(E[r.error]||r.error))}nv=r.vendedor;pin=r.pin}
-   r=null;admMsg('');await admLoad();loadOwner();
-   try{await verPines()}catch(_){ }
+   r=null;admMsg('');pines=null;await admLoad();loadOwner();
    busyBtn(b,0); /* unlock before dialog so the + button is not stuck for seconds */
-   if(nv){for(;;){const pr=form('Editar '+np.id,[{l:'Nombre del puesto',n:'nombre',v:np.nombre},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);$('#dlg-m').textContent='PIN de '+nv.nombre+': '+(pin||'—')+' (apúntalo; no se guarda en el dispositivo)';v=await pr;if(!v)break;
+   if(nv){for(;;){const pr=form('Editar '+np.nombre,[{l:'Nombre del puesto',n:'nombre',v:np.nombre},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);$('#dlg-m').textContent='PIN de '+nv.nombre+': '+(pin||'—')+' (apúntalo; no se guarda en el dispositivo)';v=await pr;if(!v)break;
     if(v.nombre!==np.nombre){const q=await admCall('puesto_guardar',{puesto:{id:np.id,nombre:v.nombre}});if(!q.ok){alert('Error: '+q.error);break}np.nombre=v.nombre}
-    if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;try{await verPines()}catch(_){}}}
+    if(v.pin_acc!=='cambiar')break;const q=await admCall('pin_crear_o_cambiar',{puesto:np.id,vendedor_id:nv.id});if(!q.ok){alert('Error: '+q.error);break}pin=q.pin;pines=null;await ensurePines();admPaint();loadPuestos()}}
    else alert('Puesto «'+np.nombre+'» creado. Añade un vendedor cuando liberes cupo (máx. 3).');
    pin=null;r={ok:true}}catch(err){admMsg('');throw err}finally{busyBtn(b,0)}}
  if(a==='pue-new'||a==='pue-ed'){v=await form(pu?'Editar puesto':'Nuevo puesto',[{l:'Nombre',n:'nombre',v:pu&&pu.nombre}]);if(v){busyBtn(b,1);try{r=await admCall('puesto_guardar',{puesto:{...(pu?{id:pu.id}:{}),...v}})}finally{busyBtn(b,0)}}}
  if(a==='ven-new'||a==='ven-ed'){if(a==='ven-new'&&adm.vendedores.filter(x=>x.activo).length>=3)return alert('Demo: máximo 3 vendedores');
   v=await form(ve?'Editar vendedor':'Nuevo vendedor',[{l:'Nombre',n:'nombre',v:ve&&ve.nombre},{l:'Email',n:'email',t:'email',o:1,v:(ve&&ve.email)||''},{l:'Puesto activo (cambia al entrar en otro)',n:'puesto',op:PO,v:ve&&ve.puesto},{l:'PIN',n:'pin_acc',op:[['','Mantener PIN'],['cambiar','Generar PIN nuevo']]}]);
-  if(v){const pinAcc=v.pin_acc;delete v.pin_acc;busyBtn(b,1);try{r=await admCall('vendedor_guardar',{vendedor:{...(ve?{id:ve.id}:{}),...v}});if(r.ok&&r.pin)alert('PIN del nuevo vendedor (apúntalo, no se guarda aquí): '+r.pin);if(r&&r.ok&&pinAcc==='cambiar'&&ve){const q=await admCall('pin_crear_o_cambiar',{puesto:v.puesto||ve.puesto,vendedor_id:ve.id});if(!q.ok)alert('Error PIN: '+q.error);else{alert('PIN nuevo: '+q.pin);await verPines()}}}finally{busyBtn(b,0)}}}
+  if(v){const pinAcc=v.pin_acc;delete v.pin_acc;busyBtn(b,1);try{r=await admCall('vendedor_guardar',{vendedor:{...(ve?{id:ve.id}:{}),...v}});if(r.ok&&r.pin)alert('PIN del nuevo vendedor (apúntalo, no se guarda aquí): '+r.pin);if(r&&r.ok&&pinAcc==='cambiar'&&ve){const q=await admCall('pin_crear_o_cambiar',{puesto:v.puesto||ve.puesto,vendedor_id:ve.id});if(!q.ok)alert('Error PIN: '+q.error);else{alert('PIN nuevo: '+q.pin);pines=null;await ensurePines();admPaint();loadPuestos()}}}finally{busyBtn(b,0)}}}
  if(a==='ven-mov'){v=await form('Mover a '+ve.nombre,[{l:'Puesto destino',n:'puesto_destino',op:PO.filter(p=>p[0]!==ve.puesto)}],'Mover');if(v){busyBtn(b,1);try{r=await admCall('vendedor_mover',{vendedor_id:ve.id,...v})}finally{busyBtn(b,0)}}}
- if(a==='stk-mov'){const pr=adm.figuras.filter(f=>f.activo).map(f=>[f.id,f.nombre]);v=await form('Mover stock',[{l:'Figura',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO},{l:'Hasta',n:'hasta',op:PO,v:PO[1]&&PO[1][0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
-  if(v){busyBtn(b,1);try{r=await admCall('stock_mover',{...v,cantidad:+v.cantidad});if(r.ok)alert('Movido. Quedan en origen: '+r.desde.find(s=>s.producto===v.producto).quedan)}finally{busyBtn(b,0)}}}
+ if(a==='stk-mov'){if(PO.length<2)return alert('Necesitas al menos 2 puestos para mover stock.');
+  const estM=await API.estadoDueno(st.ses.token_dueno).catch(()=>({ok:false}));const stockM=(estM&&estM.ok&&estM.stock)||adm.stockByPu||{};
+  const seen={},pr=[];Object.keys(stockM).forEach(pu=>{(stockM[pu]||[]).forEach(s=>{const pid=String(s[0]);if(seen[pid])return;const f=adm.figuras.find(x=>x.id===pid&&x.activo);if(!f)return;seen[pid]=1;
+   const donde=Object.keys(stockM).filter(p=>(stockM[p]||[]).some(x=>String(x[0])===pid));pr.push([f.id,f.nombre+(donde.length?' · '+donde.join(','):'')])})});
+  if(!pr.length)return alert('Ningún puesto tiene productos asignados. Crea o edita una figura y elige un puesto.');
+  const defDesde=st.ownerStall&&PO.some(p=>p[0]===st.ownerStall)?st.ownerStall:PO[0][0];
+  const defHasta=PO.find(p=>p[0]!==defDesde);v=await form('Mover stock',[{l:'Figura (puestos que la llevan)',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO,v:defDesde},{l:'Hasta',n:'hasta',op:PO,v:defHasta&&defHasta[0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
+  if(v){busyBtn(b,1);try{r=await admCall('stock_mover',{...v,cantidad:+v.cantidad});if(r.ok)alert('Movido. Quedan en origen: '+(r.desde.find(s=>s.producto===v.producto)||{}).quedan)}finally{busyBtn(b,0)}}}
  if(a.endsWith('-del')){busyBtn(b,1);try{const acc={fig:'figura_borrar',pue:'puesto_borrar',ven:'vendedor_borrar'}[a.slice(0,3)];
   r=await admCall(acc,{id});
   if(a==='pue-del'&&r&&!r.ok&&r.error==='PUESTO_CON_VENDEDORES'){
