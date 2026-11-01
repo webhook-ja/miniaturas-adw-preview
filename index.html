@@ -3,8 +3,8 @@
 <meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#2b6cb0">
 <title>Miniaturas · Puesto</title><link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="style.css?v=34"></head><body>
-<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v34</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
+<link rel="stylesheet" href="style.css?v=35"></head><body>
+<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v35</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
 <main>
 <section id="v-login" class="view">
  <div class="card"><h1>PIN</h1><select id="who" class="who"></select>
@@ -22,76 +22,58 @@
 </section>
 <section id="v-owner" class="view" hidden>
  <h2 class="owner-title">DUEÑO</h2>
- <p class="hint2 owner-intro">Elige una sección. Solo se abre una a la vez.</p>
- <div class="acc" id="owner-acc">
-  <details class="acc-item" data-acc="avisos">
-   <summary class="acc-sum blk">Avisos <span id="avisos-n" class="acc-badge" hidden>0</span></summary>
-   <div class="acc-body">
-    <p class="acc-help">Alertas del día: stock bajo, devoluciones/correcciones con justificación. Apertura/cierre de jornada aparecerá aquí cuando esté activo.</p>
-    <div id="avisos-list" class="avisos-list"></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="resumen-puestos">
-   <summary class="acc-sum blk">Resumen por puesto</summary>
-   <div class="acc-body">
-    <p class="acc-help">Por cada puesto: piezas estimadas en stock, ventas netas de hoy e importe. Nombres reales del puesto.</p>
-    <div id="puesto-resumen" class="puesto-resumen"></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="hoja">
-   <summary class="acc-sum blk">Conectar mi hoja</summary>
-   <div class="acc-body">
-    <p class="acc-help">Enlaza la app con tu Google Apps Script (<code>/exec</code>). Habla con la hoja de cálculo: productos, puestos, stock y ventas.</p>
-    <div id="hoja"><p id="hoja-est" class="hint2"></p><input id="hoja-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"><p id="hoja-msg" class="msg" hidden></p><div class="row2"><button id="hoja-ok" class="blk green">GUARDAR Y PROBAR</button><button id="hoja-off" class="blk red">DESCONECTAR</button></div></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="stock" open>
-   <summary class="acc-sum blk">Stock por puesto</summary>
-   <div class="acc-body">
-    <p class="acc-help">Ajusta el stock inicial de cada figura en cada puesto. El aviso de stock bajo marca en rojo cuando quedan ≤ el umbral. Usa Todos o un puesto concreto. Se guarda en la hoja vía la API.</p>
-    <label class="row">Aviso stock bajo ≤ <input id="thr" type="number" min="0" max="99" value="3"></label>
-    <div class="tabs" id="stall-tabs"></div><div id="stock-list"></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="figuras" data-adm="figuras">
-   <summary class="acc-sum blk">Figuras</summary>
-   <div class="acc-body">
-    <p class="acc-help">Catálogo de productos: crear (Nueva figura), editar o borrar. Cada figura se asigna a un puesto con stock. Escribe en la hoja.</p>
-    <div class="adm-slot"><div id="adm"></div></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="equipo" data-adm="puestos">
-   <summary class="acc-sum blk">Puestos y equipo</summary>
-   <div class="acc-body">
-    <p class="acc-help">Puestos, vendedores y PINes juntos: quién trabaja en cada puesto y cómo entra. Escribe en la hoja.</p>
-    <div class="tabs" id="adm-tabs"><button class="blk" data-t="puestos">Puestos</button><button class="blk" data-t="vendedores">Vendedores</button></div>
-    <div class="adm-slot" data-slot="equipo"></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="mover" data-adm="stock">
-   <summary class="acc-sum blk">Mover stock</summary>
-   <div class="acc-body">
-    <p class="acc-help">Pasa unidades de una figura entre puestos que ya la tienen (o la asigna al destino). Escribe stock en la hoja.</p>
-    <div class="adm-slot" data-slot="mover"></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="control">
-   <summary class="acc-sum blk">Control en vivo</summary>
-   <div class="acc-body">
-    <p class="acc-help">Resumen del día: vendidas y deshechas por puesto y vendedor, e historial de puestos de cada trabajador. Solo lectura desde la API.</p>
-    <div id="control"></div>
-   </div>
-  </details>
-  <details class="acc-item" data-acc="ventas">
-   <summary class="acc-sum blk">Ventas de hoy</summary>
-   <div class="acc-body">
-    <p class="acc-help">Totales e importe del día por puesto, producto y vendedor. Lee las ventas registradas en la hoja.</p>
-    <div id="sales"></div><button id="refresh" class="blk blue">ACTUALIZAR</button>
-   </div>
-  </details>
+ <section class="owner-hero" aria-label="Resumen por puesto">
+  <p class="acc-help hero-help">Resumen principal: piezas, fichas, ventas e importe por puesto.</p>
+  <div id="puesto-resumen" class="puesto-resumen"></div>
+ </section>
+ <nav class="owner-nav" id="owner-nav" aria-label="Secciones">
+  <button type="button" class="blk nav-btn sel" data-panel="stock">Stock</button>
+  <button type="button" class="blk nav-btn" data-panel="avisos">Avisos <span id="avisos-n" class="acc-badge" hidden>0</span></button>
+  <button type="button" class="blk nav-btn" data-panel="figuras" data-adm="figuras">Figuras</button>
+  <button type="button" class="blk nav-btn" data-panel="equipo" data-adm="puestos">Equipo</button>
+  <button type="button" class="blk nav-btn" data-panel="mover" data-adm="stock">Mover</button>
+  <button type="button" class="blk nav-btn" data-panel="control">Control</button>
+  <button type="button" class="blk nav-btn" data-panel="ventas">Ventas</button>
+  <button type="button" class="blk nav-btn" data-panel="hoja">Hoja</button>
+ </nav>
+ <div class="owner-panels" id="owner-panels">
+  <div class="owner-panel" data-panel="stock">
+   <p class="acc-help">Ajusta stock inicial. Umbral de aviso en rojo. Filtros Todos / puesto. Guarda en la hoja.</p>
+   <label class="row">Aviso stock bajo ≤ <input id="thr" type="number" min="0" max="99" value="3"></label>
+   <div class="tabs" id="stall-tabs"></div><div id="stock-list"></div>
+  </div>
+  <div class="owner-panel" data-panel="avisos" hidden>
+   <p class="acc-help">Stock bajo y correcciones/devoluciones con justificación. Jornada apertura/cierre: pendiente.</p>
+   <div id="avisos-list" class="avisos-list"></div>
+  </div>
+  <div class="owner-panel" data-panel="figuras" hidden>
+   <p class="acc-help">Catálogo: Nueva figura, editar o borrar. Asigna a un puesto con stock.</p>
+   <div class="adm-slot"><div id="adm"></div></div>
+  </div>
+  <div class="owner-panel" data-panel="equipo" hidden>
+   <p class="acc-help">Puestos, vendedores y PINes.</p>
+   <div class="tabs" id="adm-tabs"><button class="blk" data-t="puestos">Puestos</button><button class="blk" data-t="vendedores">Vendedores</button></div>
+   <div class="adm-slot" data-slot="equipo"></div>
+  </div>
+  <div class="owner-panel" data-panel="mover" hidden>
+   <p class="acc-help">Mueve unidades entre puestos.</p>
+   <div class="adm-slot" data-slot="mover"></div>
+  </div>
+  <div class="owner-panel" data-panel="control" hidden>
+   <p class="acc-help">Vendidas/deshechas e historial por trabajador. Solo lectura.</p>
+   <div id="control"></div>
+  </div>
+  <div class="owner-panel" data-panel="ventas" hidden>
+   <p class="acc-help">Totales del día por puesto, producto y vendedor.</p>
+   <div id="sales"></div><button id="refresh" class="blk blue">ACTUALIZAR</button>
+  </div>
+  <div class="owner-panel" data-panel="hoja" hidden>
+   <p class="acc-help">URL <code>/exec</code> de Apps Script. Conecta con la hoja.</p>
+   <div id="hoja"><p id="hoja-est" class="hint2"></p><input id="hoja-url" type="url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"><p id="hoja-msg" class="msg" hidden></p><div class="row2"><button id="hoja-ok" class="blk green">GUARDAR Y PROBAR</button><button id="hoja-off" class="blk red">DESCONECTAR</button></div></div>
+  </div>
  </div>
 </section>
 </main>
 <dialog id="dlg"><form method="dialog" id="dlg-f"><h3 id="dlg-t"></h3><div id="dlg-c"></div><p id="dlg-m" class="msg"></p><div class="dlg-b"><button value="no" class="blk" formnovalidate>Cancelar</button><button value="ok" class="blk green" id="dlg-ok">Guardar</button></div></form></dialog>
-<script src="db.js?v=34"></script><script src="api.js?v=34"></script><script src="app.js?v=34"></script>
+<script src="db.js?v=35"></script><script src="api.js?v=35"></script><script src="app.js?v=35"></script>
 </body></html>
