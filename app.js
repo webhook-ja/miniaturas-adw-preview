@@ -36,8 +36,18 @@ async function doLogin(){const okb=[...$('#pad').querySelectorAll('button')].fin
  if(!r.ok)return $('#login-msg').textContent=ERR[r.error]||r.error;
  saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre});start()}
  catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}})}
-function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');loadStall();sync()}else{show('owner');Promise.all([loadOwner(),loadControl()])}}
-$('#logout').onclick=()=>{borrarPines();st.qMem=null;st.pendDelta={};saveSes(null);$('#undo').hidden=true;show('login')};
+function paintBarSum(data){const el=$('#bar-sum');if(!el)return;
+ if(!st.ses||st.ses.rol!=='dueno'){el.hidden=true;el.textContent='';el.removeAttribute('title');return}
+ el.hidden=false;
+ if(!data){el.textContent='Hoy …';return}
+ const t=data.totales||{},uds=t.unidades??t.vendidas??0,eur=t.importe!=null?t.importe:(t.neto!=null?t.neto:'—');
+ const por=data.por_vendedor||[];
+ const bits=por.filter(x=>(x.unidades||x.vendidas)>0).slice(0,5).map(x=>{
+  const n=x.nombre||x.vendedor||'?';const short=String(n).length>10?String(n).slice(0,9)+'…':n;return short+' '+(x.unidades??x.vendidas??0)});
+ const line=`Hoy ${uds}u · ${eur}€`+(bits.length?' · '+bits.join(' · '):'');
+ el.textContent=line;el.title=por.map(x=>`${x.nombre||x.vendedor||'?'} · ${puLabel(x.puesto||x.puesto_activo||'')} · ${x.unidades??x.vendidas??0}u · ${x.importe??'—'}€`).join('\n')||line}
+function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');paintBarSum(null);loadStall();sync()}else{show('owner');paintBarSum(null);Promise.all([loadOwner(),loadControl()])}}
+$('#logout').onclick=()=>{borrarPines();st.qMem=null;st.pendDelta={};saveSes(null);$('#undo').hidden=true;paintBarSum(null);show('login')};
 function tokenMalo(r){if(['TOKEN_INVALIDO','TOKEN_CADUCADO','VENDEDOR_INACTIVO'].includes(r.error)){/* la cola NO se borra */saveSes(null);show('login');$('#login-msg').textContent='Sesión caducada: vuelve a meter el PIN (las ventas pendientes se conservan)';return true}}
 /* ---- Cola en memoria: evita IndexedDB en cada tap ---- */
 async function qAll(){if(st.qMem)return st.qMem;st.qMem=await QueueDB.all();return st.qMem}
@@ -199,6 +209,7 @@ async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!
  if(adm&&admTab==='figuras')admPaint();
  const h=await hP;if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
  const nm=k=>(names[k]||{nombre:k}).nombre;
+ paintBarSum({totales:h.totales,por_vendedor:h.por_vendedor});
  $('#sales').innerHTML=`<table><tr><th>Hoy ${h.fecha}</th><th>Uds</th><th>€</th><th>Benef.</th></tr><tr><td>TOTAL</td><td class="n">${h.totales.unidades}</td><td class="n">${h.totales.importe}</td><td class="n">${h.totales.beneficio}</td></tr></table>`+
   '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${esc(puLabel(pu))}</td><td>${esc(nm(pr))}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
   '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${esc(puLabel(x.puesto))} · ${esc(x.vendedor)}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
@@ -218,6 +229,7 @@ $('#refresh').onclick=()=>withBusy($('#refresh'),async()=>{await loadOwner();awa
 async function loadControl(){if(!st.ses||st.ses.rol!=='dueno')return;const box=$('#control');if(!box)return;box.innerHTML='<p class="msg">Cargando control…</p>';
  try{const r=await API.controlDueno(st.ses.token_dueno);if(!r.ok){if(tokenMalo(r))return;box.innerHTML='<p class="msg">'+esc(r.error||'Error')+'</p>';return}
   const live=r.en_vivo||{},tot=live.totales||{};
+  paintBarSum({totales:{unidades:tot.vendidas,importe:tot.importe,vendidas:tot.vendidas},por_vendedor:(live.por_vendedor||[]).map(x=>({nombre:x.nombre||x.vendedor,vendedor:x.vendedor,puesto:x.puesto_activo,unidades:x.vendidas,vendidas:x.vendidas,importe:x.importe}))});
   let h=`<p class="hint2">Hoy ${esc(r.fecha)} · en vivo: ${tot.vendidas||0} vendidas · ${tot.deshechas||0} deshechas</p>`;
   h+='<table><tr><th>Puesto ahora</th><th>Vend.</th><th>Desh.</th><th>Neto</th><th>€</th></tr>'+(live.por_puesto||[]).map(x=>`<tr><td>${esc(x.nombre||x.puesto)}</td><td class="n">${x.vendidas}</td><td class="n">${x.deshechas}</td><td class="n">${x.neto}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
   h+='<table><tr><th>Vendedor ahora</th><th>Activo en</th><th>Vend.</th><th>Desh.</th><th>Neto</th><th>€</th></tr>'+(live.por_vendedor||[]).map(x=>`<tr><td>${esc(x.nombre||x.vendedor)}</td><td>${esc(x.puesto_activo||'—')}</td><td class="n">${x.vendidas}</td><td class="n">${x.deshechas}</td><td class="n">${x.neto}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
@@ -367,5 +379,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=32',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=33',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
