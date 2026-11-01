@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const st={ses:null,prods:[],stock:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null};
+const st={ses:null,prods:[],stock:{},pendDelta:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null,qMem:null,ownerAt:0};
 function busyBtn(el,on){if(!el)return;if(on){if(!el.dataset.label)el.dataset.label=el.textContent;el.classList.add('busy');el.disabled=true;el.setAttribute('aria-busy','true')}
  else{el.classList.remove('busy');el.disabled=false;el.removeAttribute('aria-busy');if(el.dataset.label!=null){el.textContent=el.dataset.label;delete el.dataset.label}}}
 async function withBusy(el,fn){busyBtn(el,1);try{return await fn()}finally{busyBtn(el,0)}}
@@ -33,27 +33,55 @@ async function doLogin(){const okb=[...$('#pad').querySelectorAll('button')].fin
  if(!r.ok)return $('#login-msg').textContent=ERR[r.error]||r.error;
  saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre});start()}
  catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}})}
-function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');loadStall();sync()}else{show('owner');loadOwner();loadControl()}}
-$('#logout').onclick=()=>{borrarPines();saveSes(null);$('#undo').hidden=true;show('login')};
+function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');loadStall();sync()}else{show('owner');Promise.all([loadOwner(),loadControl()])}}
+$('#logout').onclick=()=>{borrarPines();st.qMem=null;st.pendDelta={};saveSes(null);$('#undo').hidden=true;show('login')};
 function tokenMalo(r){if(['TOKEN_INVALIDO','TOKEN_CADUCADO','VENDEDOR_INACTIVO'].includes(r.error)){/* la cola NO se borra */saveSes(null);show('login');$('#login-msg').textContent='Sesión caducada: vuelve a meter el PIN (las ventas pendientes se conservan)';return true}}
-/* ---- Puesto ---- */
-const setStock=arr=>{st.stock=Object.fromEntries((arr||[]).map(s=>[s.producto,s.quedan]));QueueDB.set('stock_'+st.ses.puesto,st.stock)};
-async function loadStall(){const P=st.ses.puesto;try{const r=await API.catalogo(st.ses.token);if(r.ok){await QueueDB.set('prods',r.productos);setStock(r.stock)}else tokenMalo(r)}catch(e){}
- st.prods=await QueueDB.get('prods')||[];if(!Object.keys(st.stock).length)st.stock=await QueueDB.get('stock_'+P)||{};await renderGrid()}
-async function pendingDelta(){const m={};(await QueueDB.all()).filter(e=>e._puesto===st.ses.puesto).forEach(e=>m[e.producto]=(m[e.producto]||0)+e.cantidad);return m}
-async function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;const pd=await pendingDelta(),g=$('#grid');g.innerHTML='';
- st.prods.filter(p=>p.id in st.stock).forEach(p=>{const s=st.stock[p.id]+(pd[p.id]||0),b=document.createElement('div');b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'');
-  b.style.setProperty('--c',p.color_icono);b.dataset.id=p.id;const img=API.driveImg(p.foto_url);
-  b.innerHTML=`${img?`<img class="ic" alt="" loading="lazy" decoding="async" width="56" height="56" src="${img}">`:`<span class="ic" style="--ic:${p.color_icono}"></span>`}<div class="nm"></div><div class="st">${s}</div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
-  b.querySelector('.nm').textContent=p.nombre;const im=b.querySelector('img');if(im)im.onerror=()=>{const sp=document.createElement('span');sp.className='ic';sp.style.setProperty('--ic',p.color_icono);im.replaceWith(sp)};
-  b.querySelector('.tile-minus').onclick=()=>sell(p,s);
-  b.querySelector('.tile-plus').onclick=()=>restock(p);
-  b.addEventListener('click',e=>{if(e.target.closest('.tile-acts'))return;sell(p,s)});
-  g.append(b)})}
+/* ---- Cola en memoria: evita IndexedDB en cada tap ---- */
+async function qAll(){if(st.qMem)return st.qMem;st.qMem=await QueueDB.all();return st.qMem}
+async function qAdd(e){if(!st.qMem)st.qMem=await QueueDB.all();if(!st.qMem.some(x=>x.id===e.id))st.qMem.push(e);await QueueDB.add(e);return e}
+async function qRemove(ids){const set=new Set(ids||[]);if(st.qMem)st.qMem=st.qMem.filter(e=>!set.has(e.id));if(ids&&ids.length)await QueueDB.remove(ids)}
+function rebuildPendDelta(){const m={};if(!st.ses){st.pendDelta=m;return m}
+ (st.qMem||[]).filter(e=>e._puesto===st.ses.puesto).forEach(e=>{m[e.producto]=(m[e.producto]||0)+e.cantidad});st.pendDelta=m;return m}
+function qtyOf(pid){return(st.stock[pid]||0)+(st.pendDelta[pid]||0)}
+function paintTileQty(pid){const tile=document.querySelector(`#grid .tile[data-id="${pid}"]`);if(!tile)return;
+ const s=qtyOf(pid),el=tile.querySelector('.st');if(el)el.textContent=String(s);
+ tile.classList.toggle('low',s<=thr());tile.classList.toggle('zero',s<=0);tile.dataset.s=String(s)}
+function paintAllTileQtys(){document.querySelectorAll('#grid .tile[data-id]').forEach(t=>paintTileQty(t.dataset.id))}
+/* ---- Puesto (stock local + cola offline) ---- */
+const setStock=arr=>{st.stock=Object.fromEntries((arr||[]).map(s=>[s.producto,s.quedan]));if(st.ses)QueueDB.set('stock_'+st.ses.puesto,st.stock)};
+async function refreshCatalogQuiet(){if(!st.ses||st.ses.rol!=='vendedor'||!navigator.onLine)return;
+ try{const r=await API.catalogo(st.ses.token);if(!r.ok){tokenMalo(r);return}
+  st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();
+  if($('#grid').querySelector('.tile'))paintAllTileQtys();else renderGrid()}catch(_){}}
+async function loadStall(){const P=st.ses.puesto;await qAll();rebuildPendDelta();
+ const cachedProds=await QueueDB.get('prods'),cachedStock=await QueueDB.get('stock_'+P);
+ if(cachedProds&&cachedProds.length)st.prods=cachedProds;
+ if(cachedStock&&typeof cachedStock==='object')st.stock=cachedStock;
+ if(st.prods.length&&Object.keys(st.stock).length){renderGrid();updPend()}
+ else{$('#grid').innerHTML='<p class="msg">Cargando catálogo…</p>'}
+ try{if(!navigator.onLine)throw Object.assign(new Error('offline'),{red:true});
+  const r=await API.catalogo(st.ses.token);if(r.ok){st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();renderGrid()}
+  else tokenMalo(r)}catch(e){
+  if(!st.prods.length||!Object.keys(st.stock).length)$('#grid').innerHTML='<p class="msg">Sin catálogo en caché. Conéctate una vez para poder vender sin red.</p>'}
+ updPend();if(navigator.onLine)sync()}
+function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelta();const g=$('#grid'),keep=new Map();
+ [...g.querySelectorAll('.tile[data-id]')].forEach(t=>keep.set(t.dataset.id,t));
+ const want=st.prods.filter(p=>p.id in st.stock);const seen=new Set();
+ want.forEach(p=>{seen.add(p.id);let b=keep.get(p.id);const s=qtyOf(p.id);
+  if(!b){b=document.createElement('div');b.dataset.id=p.id;b.style.setProperty('--c',p.color_icono);const img=API.driveImg(p.foto_url);
+   b.innerHTML=`${img?`<img class="ic" alt="" loading="lazy" decoding="async" width="56" height="56" src="${img}">`:`<span class="ic" style="--ic:${p.color_icono}"></span>`}<div class="nm"></div><div class="st"></div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
+   b.querySelector('.nm').textContent=p.nombre;const im=b.querySelector('img');if(im)im.onerror=()=>{const sp=document.createElement('span');sp.className='ic';sp.style.setProperty('--ic',p.color_icono);im.replaceWith(sp)};
+   b.querySelector('.tile-minus').onclick=e=>{e.stopPropagation();sell(p)};
+   b.querySelector('.tile-plus').onclick=e=>{e.stopPropagation();restock(p)};
+   b.addEventListener('click',()=>sell(p));g.append(b)}
+  b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'');b.dataset.s=String(s);const stEl=b.querySelector('.st');if(stEl)stEl.textContent=String(s);
+  /* refresh handlers product ref */b._prod=p});
+ keep.forEach((t,id)=>{if(!seen.has(id))t.remove()})}
 const evento=(p,c)=>({id:uuid(),fecha_hora:API.ahoraMadrid(),producto:p,cantidad:c,_puesto:st.ses.puesto,_ts:Date.now()});
-async function sell(p,s){if(s<=0){pop(true);return}const tile=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(tile)tile.classList.add('busy');
- pop();try{const e=evento(p.id,-1);await QueueDB.add(e);await renderGrid();setUndo(e,p);updPend();sync()}finally{const t2=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(t2)t2.classList.remove('busy')}}
-async function lastSaleOf(producto){const all=await QueueDB.all();
+function sell(p){const s=qtyOf(p.id);if(s<=0){pop(true);return}
+ pop();const e=evento(p.id,-1);st.pendDelta[p.id]=(st.pendDelta[p.id]||0)-1;paintTileQty(p.id);setUndo(e,p);updPend();
+ qAdd(e).then(()=>sync())}
+async function lastSaleOf(producto){const all=await qAll();
  const mine=all.filter(e=>e._puesto===st.ses.puesto&&e.producto===producto).sort((a,b)=>b._ts-a._ts);
  const undone=new Set(mine.filter(e=>e.cantidad===1&&e.ref).map(e=>e.ref));
  for(const e of mine){if(e.cantidad===-1&&!undone.has(e.id))return e}
@@ -74,45 +102,50 @@ async function askRestockJustify(nombre){
   if(detalle.length<3){alert('Escribe el detalle (mín. 3 caracteres).');continue}
   return{justificacion_tipo:tipo,justificacion:detalle.slice(0,200)}}}
 async function restock(p){const j=await askRestockJustify(p.nombre);if(!j)return;
- const tile=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(tile)tile.classList.add('busy');
- pop(true);try{const sale=await lastSaleOf(p.id);const e={...(sale?{...evento(p.id,1),ref:sale.id}:evento(p.id,1)),...j};
-  await QueueDB.add(e);if(sale&&st.undo&&st.undo.id===sale.id){st.undo=null;$('#undo').hidden=true}
-  await renderGrid();updPend();sync()}finally{const t2=document.querySelector(`#grid .tile[data-id="${p.id}"]`);if(t2)t2.classList.remove('busy')}}
+ pop(true);const sale=await lastSaleOf(p.id);const e={...(sale?{...evento(p.id,1),ref:sale.id}:evento(p.id,1)),...j};
+ st.pendDelta[p.id]=(st.pendDelta[p.id]||0)+1;paintTileQty(p.id);
+ if(sale&&st.undo&&st.undo.id===sale.id){st.undo=null;$('#undo').hidden=true}
+ updPend();qAdd(e).then(()=>sync())}
 function setUndo(e,p){st.undo=e;$('#undo-txt').textContent='−1 '+p.nombre;$('#undo').hidden=false;clearTimeout(st.ut);st.ut=setTimeout(()=>{$('#undo').hidden=true;st.undo=null},15000)}
 $('#undo-btn').onclick=async()=>{const v=st.undo;if(!v)return;const prod=st.prods.find(x=>x.id===v.producto)||{nombre:v.producto};
  const j=await askRestockJustify(prod.nombre);if(!j)return;st.undo=null;$('#undo').hidden=true;pop(true);
- await QueueDB.add({...evento(v.producto,1),ref:v.id,...j});await renderGrid();updPend();sync()};
+ const e={...evento(v.producto,1),ref:v.id,...j};st.pendDelta[v.producto]=(st.pendDelta[v.producto]||0)+1;paintTileQty(v.producto);updPend();qAdd(e).then(()=>sync())};
 /* ---- Sincronización: lotes ≤200, idempotente, backoff exponencial 2 s → 5 min ---- */
 function backoff(){st.fallos++;const ms=Math.min(2000*2**(st.fallos-1),300000);clearTimeout(st.bo);st.bo=setTimeout(sync,ms);return ms}
 async function sync(){if(st.syncing||!navigator.onLine||!st.ses||st.ses.rol!=='vendedor')return;st.syncing=true;try{
- let q=(await QueueDB.all()).filter(e=>e._puesto===st.ses.puesto).sort((a,b)=>a._ts-b._ts);
+ let q=(await qAll()).filter(e=>e._puesto===st.ses.puesto).sort((a,b)=>a._ts-b._ts);
  while(q.length){const lote=q.slice(0,200).map(({_puesto,_ts,...v})=>v);const r=await API.ventasLote(st.ses.token,lote);
   if(!r.ok){if(tokenMalo(r))return;throw new Error(r.error)}
-  const ack=[...r.aceptadas,...r.duplicadas];await QueueDB.remove(ack);
-  if(r.rechazadas?.length){/* no se reintentan: se apartan y se muestran */const rej=JSON.parse(localStorage.getItem('rechazadas')||'[]');
-   const ids=r.rechazadas.map(x=>x.id);rej.push(...r.rechazadas.map(x=>({...x,...q.find(e=>e.id===x.id)})));localStorage.setItem('rechazadas',JSON.stringify(rej));await QueueDB.remove(ids);ack.push(...ids);
+  const ack=[...r.aceptadas,...r.duplicadas];await qRemove(ack);
+  if(r.rechazadas?.length){const rej=JSON.parse(localStorage.getItem('rechazadas')||'[]');
+   const ids=r.rechazadas.map(x=>x.id);rej.push(...r.rechazadas.map(x=>({...x,...q.find(e=>e.id===x.id)})));localStorage.setItem('rechazadas',JSON.stringify(rej));await qRemove(ids);ack.push(...ids);
    $('#rech').hidden=false;$('#rech').textContent='⚠ '+rej.length+' ventas rechazadas por el servidor: '+r.rechazadas.map(x=>x.motivo).join(', ')}
   if(r.marcadas?.length){$('#rech').hidden=false;$('#rech').textContent='ℹ '+r.marcadas.length+' ventas guardadas de productos desactivados ('+r.marcadas.map(x=>x.motivo).join(', ')+')'}
-  setStock(r.stock);q=q.filter(e=>!ack.includes(e.id));if(!ack.length)break}
- st.fallos=0;clearTimeout(st.bo);await renderGrid()
+  setStock(r.stock);rebuildPendDelta();paintAllTileQtys();q=q.filter(e=>!ack.includes(e.id));if(!ack.length)break}
+ st.fallos=0;clearTimeout(st.bo)
 }catch(e){backoff()}finally{st.syncing=false;updPend()}}
-async function pendMine(){const all=await QueueDB.all();if(st.ses&&st.ses.rol==='vendedor')return all.filter(e=>e._puesto===st.ses.puesto).length;return all.length}
-async function purgeOrphanQueue(active){const set=new Set(active||[]);const orphans=(await QueueDB.all()).filter(e=>e._puesto&&!set.has(e._puesto));if(orphans.length)await QueueDB.remove(orphans.map(e=>e.id));return orphans.length}
-async function updPend(){const n=await pendMine();$('#pend').textContent='⏳'+n;$('#net').textContent=navigator.onLine?'ONLINE':'OFFLINE';$('#net').className='pill '+(navigator.onLine?'on':'off')}
-addEventListener('online',()=>{st.fallos=0;updPend();sync()});addEventListener('offline',updPend);setInterval(async()=>{if(st.ses&&st.ses.rol==='vendedor'&&await pendMine())sync()},30000); /* sin red si la cola está vacía */
+function pendMineCount(){if(!st.qMem)return 0;if(st.ses&&st.ses.rol==='vendedor')return st.qMem.filter(e=>e._puesto===st.ses.puesto).length;return st.qMem.length}
+async function purgeOrphanQueue(active){const set=new Set(active||[]);const all=await qAll();const orphans=all.filter(e=>e._puesto&&!set.has(e._puesto));if(orphans.length)await qRemove(orphans.map(e=>e.id));return orphans.length}
+function updPend(){const n=pendMineCount();$('#pend').textContent=n?'⏳'+n:'✓';$('#net').textContent=navigator.onLine?'ONLINE':'OFFLINE';$('#net').className='pill '+(navigator.onLine?'on':'off');
+ const b=$('#off-banner');if(b)b.hidden=navigator.onLine||!(st.ses&&st.ses.rol==='vendedor')}
+addEventListener('online',()=>{st.fallos=0;clearTimeout(st.bo);updPend();
+ if(st.ses&&st.ses.rol==='vendedor')refreshCatalogQuiet().finally(()=>sync());else sync()});
+addEventListener('offline',updPend);setInterval(()=>{if(st.ses&&st.ses.rol==='vendedor'&&pendMineCount())sync()},30000);
 document.addEventListener('visibilitychange',()=>{
  if(document.hidden){borrarPines();return}
  sync();
- if(st.ses&&st.ses.rol==='dueno'){if(!adm)admLoad();else if(admTab==='puestos')ensurePines().then(()=>admPaint());loadOwner();loadControl()}
+ if(st.ses&&st.ses.rol==='dueno'){
+  if(Date.now()-st.ownerAt<20000){if(admTab==='puestos'&&pines===null)ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint());return}
+  Promise.all([loadOwner(),loadControl()])}
 });
 /* ---- Dueño ---- */
-$('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);renderGrid()};
+$('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);paintAllTileQtys()};
 function paintStallTabs(puestos,sel){
  const t=$('#stall-tabs');t.innerHTML='';
  puestos.forEach(p=>{const b=document.createElement('button');b.type='button';b.className='blk'+(p===sel?' sel':'');b.textContent='Puesto '+p;
-  b.onclick=()=>{if(st.ownerStall===p)return;st.ownerStall=p;paintStallTabs(puestos,p);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner()};t.append(b)});
+  b.onclick=()=>{if(st.ownerStall===p)return;st.ownerStall=p;paintStallTabs(puestos,p);$('#stock-list').innerHTML='<p class="msg">Cargando…</p>';loadOwner(true)};t.append(b)});
 }
-async function ensurePines(){if(pines&&pines.length)return pines;if(!st.ses||st.ses.rol!=='dueno')return null;
+async function ensurePines(){if(pines!==null)return pines;if(!st.ses||st.ses.rol!=='dueno')return null;
  const r=await API.pinesVer(st.ses.token_dueno).catch(()=>({ok:false}));if(!r.ok){if(tokenMalo(r))return null;return null}
  pines=r.pines||[];return pines}
 
@@ -132,19 +165,19 @@ async function flushAllStock(){Object.keys(stockTimers).forEach(k=>{clearTimeout
  const keys=new Set([...Object.keys(stockPend),...Object.keys(stockSaving)]);await Promise.all([...keys].map(k=>flushStock(k)));
  while(Object.keys(stockSaving).length||Object.keys(stockPend).length)await new Promise(r=>setTimeout(r,40))}
 async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!skipFlush)await flushAllStock();const T=st.ses.token_dueno;const gen=++ownerGen;if(!adm)admLoad();
- try{const e=await API.estadoDueno(T);if(gen!==ownerGen)return;if(!e.ok){if(tokenMalo(e))return;throw new Error(e.error)}
- st.puestosDueno=e.puestos;st.ownerStall=e.puestos.includes(st.ownerStall)?st.ownerStall:e.puestos[0];
- await purgeOrphanQueue(e.puestos);updPend();
+ try{const eP=API.estadoDueno(T),hP=API.ventasHoy(T);const e=await eP;if(gen!==ownerGen)return;if(!e.ok){if(tokenMalo(e))return;throw new Error(e.error)}
+ st.ownerAt=Date.now();st.puestosDueno=e.puestos;st.ownerStall=e.puestos.includes(st.ownerStall)?st.ownerStall:e.puestos[0];
+ if(adm)adm.stockByPu=e.stock||{};
+ purgeOrphanQueue(e.puestos);updPend();
  paintStallTabs(e.puestos,st.ownerStall);
  const names=Object.fromEntries(e.productos.map(p=>[p[0],{nombre:p[1],activo:p[4]}])),L=$('#stock-list');L.innerHTML='';
-
  (e.stock[st.ownerStall]||[]).forEach(([producto,ini,vend,quedan])=>{const p=names[producto]||{nombre:producto},d=document.createElement('div');d.className='line';
   d.innerHTML=`<span class="nm"></span><button type="button" class="blk red">−</button><span class="n">${ini}</span><button type="button" class="blk green">+</button>`;
   paintStockRow(d,p.nombre,p.activo,ini,vend);const[m,pl]=d.querySelectorAll('button');
   m.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur-1,d,p)};
   pl.onclick=()=>{const cur=Math.max(0,+d.querySelector('.n').textContent||0);adj(producto,cur+1,d,p)};L.append(d)});
  if(!L.children.length)L.innerHTML='<p class="msg">Sin stock en este puesto. Usa + en otro puesto o Mover stock.</p>';
- const h=await API.ventasHoy(T);if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
+ const h=await hP;if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
  const nm=k=>(names[k]||{nombre:k}).nombre;
  $('#sales').innerHTML=`<table><tr><th>Hoy ${h.fecha}</th><th>Uds</th><th>€</th><th>Benef.</th></tr><tr><td>TOTAL</td><td class="n">${h.totales.unidades}</td><td class="n">${h.totales.importe}</td><td class="n">${h.totales.beneficio}</td></tr></table>`+
   '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${pu}</td><td>${nm(pr)}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
@@ -179,9 +212,8 @@ async function verPines(){await ensurePines();if(adm&&admTab==='puestos')admPain
 var adm=null,admTab='figuras';
 async function admCall(accion,extra){const r=await API.admin(accion,st.ses.token_dueno,extra).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok&&tokenMalo(r))throw 0;return r}
 async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;
- try{const e=await API.estadoDueno(st.ses.token_dueno);if(e&&e.ok)adm.stockByPu=e.stock||{}}catch(_){adm.stockByPu=adm.stockByPu||{}}
- if(admTab==='puestos')await ensurePines();
- admPaint()}
+ if(!adm.stockByPu){try{const e=await API.estadoDueno(st.ses.token_dueno);if(e&&e.ok)adm.stockByPu=e.stock||{}}catch(_){adm.stockByPu=adm.stockByPu||{}}}
+ admPaint();if(admTab==='puestos')ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint())}
 function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$('#dlg'),okb=$('#dlg-ok');
  if(D.open){try{D.close('no')}catch(e){}}
  busyBtn(okb,0);$('#dlg-t').textContent=titulo;$('#dlg-m').textContent='';okb.textContent=okTxt;
@@ -214,7 +246,8 @@ function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.cla
  if(admTab==='stock'){h='<p class="hint2">Mueve unidades entre puestos que llevan la misma figura. Si el destino aún no la tenía, queda asignada allí.</p><button class="blk blue add" data-a="stk-mov">Mover stock entre puestos</button>'}
  A.innerHTML=h}
 function admMsg(t){let m=$('#adm-msg');if(!m){m=document.createElement('p');m.id='adm-msg';m.className='msg';const A=$('#adm');if(A)A.prepend(m)}m.textContent=t||'';m.hidden=!t}
-document.getElementById('adm-tabs').onclick=async e=>{const t=e.target.dataset.t;if(!t)return;admTab=t;if(t==='puestos'&&st.ses&&st.ses.rol==='dueno')await ensurePines();adm?admPaint():admLoad()};
+document.getElementById('adm-tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;admTab=t;
+ if(!adm){admLoad();return}admPaint();if(t==='puestos')ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint())};
 document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b||b.dataset.lock==='1')return;const a=b.dataset.a,id=b.dataset.id;let r,v;
  if(a==='pin-show'){b.dataset.lock='1';try{await withBusy(b,async()=>{await ensurePines();admPaint();loadPuestos()})}finally{delete b.dataset.lock}return}
  if(a==='pin-copy'){const px=(pines||[]).find(x=>String(x.puesto)===String(id));if(!px||!px.pin)return alert('No hay PIN visible');
@@ -311,5 +344,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=20',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=27',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
