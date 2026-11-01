@@ -157,7 +157,9 @@ function paintStockRow(row,nombre,activo,ini,vend){const quedan=Math.max(0,ini-v
  row.classList.toggle('low',quedan<=thr());row.classList.toggle('zero',quedan<=0);
  const nm=row.querySelector('.nm');if(nm)nm.textContent=nombre+(activo===0?' (inactivo)':'')+' · vendidas '+vend+' · quedan '+quedan}
 function paintOwnerStockWarn(){document.querySelectorAll('#stock-list .line').forEach(row=>{
- const ini=+(row.dataset.ini||0),vend=+(row.dataset.vend||0);paintStockRow(row,(row.querySelector('.nm')?.textContent||'').split(' ·')[0],1,ini,vend)})}
+ const quedan=Math.max(0,+(row.dataset.ini||0)-(+(row.dataset.vend||0)));const num=row.querySelector('.n');
+ if(num){num.classList.toggle('low',quedan<=thr());num.classList.toggle('zero',quedan<=0)}
+ row.classList.toggle('low',quedan<=thr());row.classList.toggle('zero',quedan<=0)})}
 async function flushStock(key){const p=stockPend[key];if(!p||stockSaving[key])return;stockSaving[key]=1;delete stockPend[key];clearTimeout(stockTimers[key]);delete stockTimers[key];clearTimeout(stockSlow[key]);delete stockSlow[key];
  try{const r=await API.stockGuardar(st.ses.token_dueno,p.puesto,[{producto:p.producto,cantidad_inicial:p.n}]);
   if(!r.ok){alert(r.error||'No se pudo guardar stock');await loadOwner(true);return}
