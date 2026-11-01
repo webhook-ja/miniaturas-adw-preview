@@ -143,8 +143,13 @@ document.addEventListener('visibilitychange',()=>{
 });
 /* ---- Dueño ---- */
 (function(){const root=$('#owner-acc');if(!root)return;
+ const parkAdm=slot=>{const admEl=$('#adm');if(!admEl||!slot||admEl.parentElement===slot)return;slot.appendChild(admEl)};
  root.addEventListener('toggle',e=>{const d=e.target;if(d.tagName!=='DETAILS'||!d.open)return;
-  root.querySelectorAll('details.acc-item').forEach(x=>{if(x!==d)x.open=false})})})();
+  root.querySelectorAll('details.acc-item').forEach(x=>{if(x!==d)x.open=false});
+  const tab=d.dataset.adm;const slot=d.querySelector('.adm-slot');
+  if(slot)parkAdm(slot);
+  if(tab){admTab=tab;if(st.ses&&st.ses.rol==='dueno'){if(adm)admPaint();else admLoad();
+   if(tab==='puestos')ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint())}}})})();
 $('#thr').value=thr();$('#thr').onchange=e=>{localStorage.setItem('umbral',e.target.value);paintAllTileQtys();paintOwnerStockWarn()};
 function paintStallTabs(puestos,sel){
  const t=$('#stall-tabs');t.innerHTML='';
@@ -264,6 +269,7 @@ function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.cla
  A.innerHTML=h}
 function admMsg(t){let m=$('#adm-msg');if(!m){m=document.createElement('p');m.id='adm-msg';m.className='msg';const A=$('#adm');if(A)A.prepend(m)}m.textContent=t||'';m.hidden=!t}
 document.getElementById('adm-tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;admTab=t;
+ const eq=$('#owner-acc details[data-acc="equipo"] .adm-slot');if(eq){const a=$('#adm');if(a)eq.appendChild(a)}
  if(!adm){admLoad();return}admPaint();if(t==='puestos')ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint())};
 document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data-a]');if(!b||b.dataset.lock==='1')return;const a=b.dataset.a,id=b.dataset.id;let r,v;
  if(a==='pin-show'){b.dataset.lock='1';try{await withBusy(b,async()=>{await ensurePines();admPaint();loadPuestos()})}finally{delete b.dataset.lock}return}
@@ -361,5 +367,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=31',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=32',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
