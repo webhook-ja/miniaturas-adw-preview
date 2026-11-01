@@ -168,15 +168,17 @@ function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.cla
   h='<p class="hint2">Cada puesto tiene su catálogo: asigna la figura a un puesto (con stock). La misma figura puede estar en varios puestos.</p><button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} € · <span class="tag">${esc(figPuestos(f.id))}</span>`,f.activo,0,
   `<button class="blk sm" data-a="fig-ed" data-id="${f.id}">Editar</button><button class="blk sm red" data-a="fig-del" data-id="${f.id}">Borrar</button>`)).join('')}
  if(admTab==='puestos'){const nP=adm.puestos.filter(p=>p.activo).length,capP=nP>=3;
-  h='<p class="hint2">Una fila por puesto: nombre · vendedor · PIN. El PIN se borra al ocultar la pestaña o salir.</p>'+(capP?'<p class="hint2">Demo: máximo 3 puestos</p>':'')+(capP?'':'<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>')+(pines?'' :'<button class="blk blue add" data-a="pin-show">Mostrar PINES</button>');
-  h+=adm.puestos.map(p=>{if(!p.activo)return fila(`${esc(p.nombre)} <span class="tag">${p.id}</span>`,0,0,'');
+  h='<p class="hint2">El PIN se borra al ocultar la pestaña o salir.</p>'+(capP?'<p class="hint2">Demo: máximo 3 puestos</p>':'')+(capP?'':'<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>')+(pines?'' :'<button class="blk blue add" data-a="pin-show">Mostrar PINES</button>');
+  const rows=adm.puestos.filter(p=>p.activo).map(p=>{
    const ven=(adm.vendedores||[]).find(v=>v.activo&&String(v.puesto)===String(p.id));
    const px=(pines||[]).find(x=>String(x.puesto)===String(p.id));
-   const pinTxt=pines==null?'······':(px&&px.pin?px.pin:'— sin PIN —');
-   const pinBtns=pines==null?'':((px&&px.pin?`<button class="blk sm" data-a="pin-copy" data-id="${p.id}" data-vid="${esc(px.vendedor||(ven&&ven.id)||'')}">Copiar PIN</button>`:'')+
-    (ven||px?`<button class="blk sm blue" data-a="pin-ch" data-id="${p.id}" data-vid="${esc((px&&px.vendedor)||(ven&&ven.id)||'')}">${px&&px.pin?'Cambiar PIN':'Crear PIN'}</button>`:''));
-   return fila(`<b>${esc(p.nombre)}</b> · ${esc(ven?ven.nombre:'sin vendedor')} · <span class="pin">${esc(pinTxt)}</span>`,1,0,
-    `${pinBtns}<button class="blk sm" data-a="pue-ed" data-id="${p.id}">Editar</button><button class="blk sm red" data-a="pue-del" data-id="${p.id}">Borrar</button>`)}).join('')}
+   const pinTxt=pines==null?'······':(px&&px.pin?px.pin:'—');
+   const vid=esc((px&&px.vendedor)||(ven&&ven.id)||'');
+   const acts=(pines==null?'':((px&&px.pin?`<button type="button" class="blk sm" data-a="pin-copy" data-id="${p.id}" data-vid="${vid}">Copiar PIN</button>`:'')+
+    (ven||px?`<button type="button" class="blk sm blue" data-a="pin-ch" data-id="${p.id}" data-vid="${vid}">${px&&px.pin?'Cambiar PIN':'Crear PIN'}</button>`:'')))+
+    `<button type="button" class="blk sm" data-a="pue-ed" data-id="${p.id}">Editar</button><button type="button" class="blk sm red" data-a="pue-del" data-id="${p.id}">Borrar</button>`;
+   return `<tr><td>${esc(p.nombre||p.id)}</td><td>${esc(ven?ven.nombre:'—')}</td><td class="pin">${esc(pinTxt)}</td><td class="acts">${acts}</td></tr>`}).join('');
+  h+=`<table class="puestos-tbl"><thead><tr><th>Puesto</th><th>Vendedor</th><th>PIN</th><th>Acciones</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Sin puestos activos</td></tr>'}</tbody></table>`}
  if(admTab==='vendedores'){const nV=adm.vendedores.filter(v=>v.activo).length,capV=nV>=3;
   h=(capV?'<p class="hint2">Demo: máximo 3 vendedores</p>':'<button class="blk green add" data-a="ven-new">+ Nuevo vendedor</button>')+adm.vendedores.map(v=>fila(`${esc(v.nombre)} <span class="tag">${v.id}</span> · ${esc(pName(v.puesto))}`,v.activo,0,
   `<button class="blk sm" data-a="ven-ed" data-id="${v.id}">Editar</button><button class="blk sm blue" data-a="ven-mov" data-id="${v.id}">Mover</button><button class="blk sm red" data-a="ven-del" data-id="${v.id}">Borrar</button>`)).join('')}
