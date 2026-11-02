@@ -83,7 +83,7 @@ const API=(()=>{
   stock_ack(q,d){const t=untok(q.token,'vendedor');const snap=Array.isArray(q.snapshot)?q.snapshot:[];
    let skus=0,piezas=0;snap.forEach(x=>{if(!x)return;skus++;piezas+=Number(x.quedan)||0});
    const row={id:crypto.randomUUID(),fecha_hora:API.ahoraMadrid(),vendedor:t.vid,puesto:t.p,origen:'stock_ack',detalle:skus+' fichas · '+piezas+' piezas'};
-   d.asignaciones=d.asignaciones||[];d.asignaciones.push(row);return{ack:row,no_store:true}},
+   d.asignaciones=d.asignaciones||[];d.asignaciones.push(row);return{ack:row}},
   catalogo(q,d){let pu;if(q.token_dueno){untok(q.token_dueno,'dueno');pu=q.puesto;if(!pu)throw'PUESTO_INVALIDO'}else pu=untok(q.token,'vendedor').p;
    const puNom=(d.puestosT.find(p=>p.id===pu)||{}).nombre||pu;
    return{puesto:pu,puesto_nombre:puNom,puestos_nombres:{[pu]:puNom},productos:d.productos.filter(p=>p.activo).map(({activo,...p})=>p),stock:stockDe(d,pu)}},
