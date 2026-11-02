@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const st={ses:null,prods:[],stock:{},pendDelta:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null,qMem:null,ownerAt:0};
+const st={ses:null,prods:[],stock:{},pendDelta:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null,qMem:null,ownerAt:0,stockAcked:false};
 function busyBtn(el,on){if(!el)return;if(on){if(!el.dataset.label)el.dataset.label=el.textContent;el.classList.add('busy');el.disabled=true;el.setAttribute('aria-busy','true')}
  else{el.classList.remove('busy');el.disabled=false;el.removeAttribute('aria-busy');if(el.dataset.label!=null){el.textContent=el.dataset.label;delete el.dataset.label}}}
 async function withBusy(el,fn){busyBtn(el,1);try{return await fn()}finally{busyBtn(el,0)}}
@@ -38,10 +38,31 @@ async function doLogin(){const okb=[...$('#pad').querySelectorAll('button')].fin
  if(!r.ok)return $('#login-msg').textContent=ERR[r.error]||r.error;
  if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);
  if(r.vendedor&&r.vendedor.puesto_nombre)mergePuestoNames({[r.vendedor.puesto]:r.vendedor.puesto_nombre});
- saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre});start()}
+ saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre,vid:r.vendedor.id||''});start()}
  catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}})}
 function paintStallTitle(){if(!st.ses||st.ses.rol!=='vendedor')return;const el=$('#stall-name');if(!el)return;
  el.textContent=st.ses.nombre+' · '+puLabel(st.ses.puesto)}
+function stockAckKey(){if(!st.ses||st.ses.rol!=='vendedor')return'';
+ return'stock_ack_'+st.ses.puesto+'_'+(st.ses.vid||st.ses.nombre||'x')+'_'+API.hoyMadrid()}
+function hasStockAck(){const k=stockAckKey();return!!(k&&(sessionStorage.getItem(k)==='1'||localStorage.getItem(k)==='1'))}
+function markStockAck(){const k=stockAckKey();if(!k)return;sessionStorage.setItem(k,'1');localStorage.setItem(k,'1');st.stockAcked=true;
+ const D=$('#dlg-stock-ack');if(D&&D.open)try{D.close()}catch(_){}
+ const w=$('#stock-ack-warn');if(w)w.hidden=true;const g=$('#grid');if(g)g.classList.remove('stock-locked')}
+function requireStockAck(){if(st.ses&&st.ses.rol==='vendedor'&&!st.stockAcked){const w=$('#stock-ack-warn');if(w)w.hidden=false;ensureStockAckPrompt(true);return false}return true}
+function stockAckRows(){rebuildPendDelta();return(st.prods||[]).filter(p=>p.id in st.stock).map(p=>{const q=qtyOf(p.id);return{id:p.id,nombre:p.nombre,quedan:q,precio:p.precio}}).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es'))}
+function ensureStockAckPrompt(force){if(!st.ses||st.ses.rol!=='vendedor')return;
+ if(!force&&hasStockAck()){st.stockAcked=true;const g=$('#grid');if(g)g.classList.remove('stock-locked');return}
+ st.stockAcked=false;const g=$('#grid');if(g)g.classList.add('stock-locked');
+ const D=$('#dlg-stock-ack'),list=$('#stock-ack-list');if(!D||!list)return;
+ const rows=stockAckRows();
+ list.innerHTML=rows.length
+  ?('<table><tr><th>Producto</th><th>Quedan</th><th>€</th></tr>'+rows.map(r=>`<tr><td>${esc(r.nombre)}</td><td class="n">${r.quedan}</td><td class="n">${r.precio!=null?r.precio:'—'}</td></tr>`).join('')+'</table>')
+  :'<p class="hint2" style="margin:0;color:var(--k)">No hay productos con stock en este puesto.</p>';
+ if(!D.open){try{D.showModal()}catch(_){D.setAttribute('open','')}}}
+(function(){const ok=$('#stock-ack-ok'),out=$('#stock-ack-out'),D=$('#dlg-stock-ack');
+ if(ok)ok.onclick=e=>{e.preventDefault();e.stopPropagation();markStockAck()};
+ if(out)out.onclick=e=>{e.preventDefault();$('#logout').click()};
+ if(D)D.addEventListener('cancel',e=>{e.preventDefault();const w=$('#stock-ack-warn');if(w){w.hidden=false;w.textContent='Debes aceptar el stock (o salir) para continuar.'}})})();
 function paintBarSum(data){const el=$('#bar-sum');if(!el)return;
  if(!st.ses||st.ses.rol!=='dueno'){el.hidden=true;el.textContent='';el.removeAttribute('title');return}
  el.hidden=false;
@@ -52,8 +73,9 @@ function paintBarSum(data){const el=$('#bar-sum');if(!el)return;
   const n=x.nombre||x.vendedor||'?';const short=String(n).length>10?String(n).slice(0,9)+'…':n;return short+' '+(x.unidades??x.vendidas??0)});
  const line=`Hoy ${uds}u · ${eur}€`+(bits.length?' · '+bits.join(' · '):'');
  el.textContent=line;el.title=por.map(x=>`${x.nombre||x.vendedor||'?'} · ${puLabel(x.puesto||x.puesto_activo||'')} · ${x.unidades??x.vendidas??0}u · ${x.importe??'—'}€`).join('\n')||line}
-function start(){if(st.ses.rol==='vendedor'){paintStallTitle();show('stall');paintBarSum(null);loadStall();sync()}else{show('owner');paintBarSum(null);loadOwner().then(()=>{const idle=window.requestIdleCallback||(cb=>setTimeout(cb,180));idle(()=>{if(st.ses&&st.ses.rol==='dueno')loadControl()}, {timeout:800})})}}
-$('#logout').onclick=()=>{borrarPines();st.qMem=null;st.pendDelta={};saveSes(null);$('#undo').hidden=true;paintBarSum(null);show('login')};
+function start(){if(st.ses.rol==='vendedor'){st.stockAcked=hasStockAck();paintStallTitle();show('stall');paintBarSum(null);loadStall();sync()}else{st.stockAcked=true;show('owner');paintBarSum(null);loadOwner().then(()=>{const idle=window.requestIdleCallback||(cb=>setTimeout(cb,180));idle(()=>{if(st.ses&&st.ses.rol==='dueno')loadControl()}, {timeout:800})})}}
+$('#logout').onclick=()=>{borrarPines();st.qMem=null;st.pendDelta={};st.stockAcked=false;const D=$('#dlg-stock-ack');if(D&&D.open)try{D.close()}catch(_){}
+ saveSes(null);$('#undo').hidden=true;paintBarSum(null);show('login')};
 function tokenMalo(r){if(['TOKEN_INVALIDO','TOKEN_CADUCADO','VENDEDOR_INACTIVO'].includes(r.error)){/* la cola NO se borra */saveSes(null);show('login');$('#login-msg').textContent='Sesión caducada: vuelve a meter el PIN (las ventas pendientes se conservan)';return true}}
 /* ---- Cola en memoria: evita IndexedDB en cada tap ---- */
 async function qAll(){if(st.qMem)return st.qMem;st.qMem=await QueueDB.all();return st.qMem}
@@ -86,7 +108,7 @@ async function loadStall(){const P=st.ses.puesto;paintStallTitle();await qAll();
    paintStallTitle();st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();renderGrid()}
   else tokenMalo(r)}catch(e){
   if(!st.prods.length||!Object.keys(st.stock).length)$('#grid').innerHTML='<p class="msg">Sin catálogo en caché. Conéctate una vez para poder vender sin red.</p>'}
- updPend();if(navigator.onLine)sync()}
+ updPend();ensureStockAckPrompt(false);if(navigator.onLine)sync()}
 function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelta();const g=$('#grid'),keep=new Map();
  [...g.querySelectorAll('.tile[data-id]')].forEach(t=>keep.set(t.dataset.id,t));
  const want=st.prods.filter(p=>p.id in st.stock);const seen=new Set();
@@ -111,7 +133,7 @@ function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelt
   b._prod=p});
  keep.forEach((t,id)=>{if(!seen.has(id))t.remove()})}
 const evento=(p,c)=>({id:uuid(),fecha_hora:API.ahoraMadrid(),producto:p,cantidad:c,_puesto:st.ses.puesto,_ts:Date.now()});
-function sell(p){const s=qtyOf(p.id);if(s<=0){pop(true);return}
+function sell(p){if(!requireStockAck())return;const s=qtyOf(p.id);if(s<=0){pop(true);return}
  pop();const e=evento(p.id,-1);st.pendDelta[p.id]=(st.pendDelta[p.id]||0)-1;paintTileQty(p.id);setUndo(e,p);updPend();
  qAdd(e).then(()=>sync())}
 async function lastSaleOf(producto){const all=await qAll();
@@ -134,13 +156,13 @@ async function askRestockJustify(nombre){
   const tipo=v.tipo==='devolucion'?'devolucion':'error',detalle=String(v.detalle||'').trim();
   if(detalle.length<3){alert('Escribe el detalle (mín. 3 caracteres).');continue}
   return{justificacion_tipo:tipo,justificacion:detalle.slice(0,200)}}}
-async function restock(p){const j=await askRestockJustify(p.nombre);if(!j)return;
+async function restock(p){if(!requireStockAck())return;const j=await askRestockJustify(p.nombre);if(!j)return;
  pop(true);const sale=await lastSaleOf(p.id);const e={...(sale?{...evento(p.id,1),ref:sale.id}:evento(p.id,1)),...j};
  st.pendDelta[p.id]=(st.pendDelta[p.id]||0)+1;paintTileQty(p.id);
  if(sale&&st.undo&&st.undo.id===sale.id){st.undo=null;$('#undo').hidden=true}
  updPend();qAdd(e).then(()=>sync())}
 function setUndo(e,p){st.undo=e;$('#undo-txt').textContent='−1 '+p.nombre;$('#undo').hidden=false;clearTimeout(st.ut);st.ut=setTimeout(()=>{$('#undo').hidden=true;st.undo=null},15000)}
-$('#undo-btn').onclick=async()=>{const v=st.undo;if(!v)return;const prod=st.prods.find(x=>x.id===v.producto)||{nombre:v.producto};
+$('#undo-btn').onclick=async()=>{if(!requireStockAck())return;const v=st.undo;if(!v)return;const prod=st.prods.find(x=>x.id===v.producto)||{nombre:v.producto};
  const j=await askRestockJustify(prod.nombre);if(!j)return;st.undo=null;$('#undo').hidden=true;pop(true);
  const e={...evento(v.producto,1),ref:v.id,...j};st.pendDelta[v.producto]=(st.pendDelta[v.producto]||0)+1;paintTileQty(v.producto);updPend();qAdd(e).then(()=>sync())};
 /* ---- Sincronización: lotes ≤200, idempotente, backoff exponencial 2 s → 5 min ---- */
@@ -446,5 +468,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=44',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=45',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}

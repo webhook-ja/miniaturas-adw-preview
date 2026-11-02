@@ -4,8 +4,8 @@
 <title>Miniaturas · Puesto</title><link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preload" href="fonts/px.woff2?v=9" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=44"></head><body>
-<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v44</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
+<link rel="stylesheet" href="style.css?v=45"></head><body>
+<header class="bar"><span class="logo">▣ MINIATURAS</span><span id="bar-sum" class="bar-sum" hidden title=""></span><span id="ver" class="pill ver">v45</span><span id="net" class="pill">…</span><span id="pend" class="pill">0</span><button id="logout" class="mini" hidden>SALIR</button></header>
 <main>
 <section id="v-login" class="view">
  <div class="card"><h1>PIN</h1><select id="who" class="who"></select>
@@ -76,5 +76,15 @@
 </section>
 </main>
 <dialog id="dlg"><form method="dialog" id="dlg-f"><h3 id="dlg-t"></h3><div id="dlg-c"></div><p id="dlg-m" class="msg"></p><div class="dlg-b"><button value="no" class="blk" formnovalidate>Cancelar</button><button value="ok" class="blk green" id="dlg-ok">Guardar</button></div></form></dialog>
-<script src="db.js?v=44"></script><script src="api.js?v=44"></script><script src="app.js?v=44"></script>
+<dialog id="dlg-stock-ack" class="stock-ack-dlg">
+ <h3>Confirmar stock del puesto</h3>
+ <p class="stock-ack-help">Antes de vender, confirma el stock que hay ahora en este puesto. Al pulsar <b>Acepto el stock</b> tomas el control.</p>
+ <div id="stock-ack-list" class="stock-ack-list"></div>
+ <p id="stock-ack-warn" class="msg" hidden>Debes aceptar el stock para poder vender.</p>
+ <div class="dlg-b stock-ack-actions">
+  <button type="button" id="stock-ack-out" class="blk">Salir</button>
+  <button type="button" id="stock-ack-ok" class="blk green">Acepto el stock</button>
+ </div>
+</dialog>
+<script src="db.js?v=45"></script><script src="api.js?v=45"></script><script src="app.js?v=45"></script>
 </body></html>
