@@ -64,17 +64,11 @@ td,th{border-width:1px;padding:8px}td.n{font-size:12px}.rech{border-width:3px;bo
 dialog{border:3px solid var(--k);border-radius:10px;box-shadow:0 8px 0 rgba(58,63,75,.35);max-width:420px;width:92vw;background:var(--w)}dialog::backdrop{background:rgba(30,35,50,.45)}
 dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:700;margin:10px 0 4px}dialog input,dialog select{width:100%;font:inherit;padding:10px;border:3px solid var(--k);border-radius:6px}
 .dlg-b{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}.del{opacity:.55}.del .nm{text-decoration:line-through}.tag{font-size:11px;background:#e9e4d8;border:2px solid var(--k);border-radius:4px;padding:1px 5px;margin-left:6px}
-/* Compact add / action buttons for tablet·phone (figuras, equipo, mover, control, ventas) */
-#adm .add{margin:0 0 10px;font-size:13px;padding:8px 12px;line-height:1.2}
-#adm .add.plus{font-size:22px;line-height:1;width:40px;height:40px;padding:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;margin:0 0 10px}
-.owner-panel[data-panel="figuras"] .blk,
-.owner-panel[data-panel="equipo"] .blk,
-.owner-panel[data-panel="mover"] .blk,
-.owner-panel[data-panel="control"] .blk,
-.owner-panel[data-panel="ventas"] .blk,
-.owner-panel[data-panel="ventas"] #refresh{font-size:13px;padding:8px 12px;margin-bottom:8px}
-.owner-panel[data-panel="equipo"] .blk.sm,
-.owner-panel[data-panel="figuras"] .line .blk{font-size:12px;padding:6px 9px}
+#adm .add{margin-bottom:12px}
+/* Tablet·phone: only Nueva figura + equipo center plus */
+.owner-panel[data-panel="figuras"] #adm > .blk.add{font-size:13px;padding:8px 12px;line-height:1.2;margin:0 0 10px}
+.owner-panel[data-panel="equipo"] #adm > .blk.add.plus{font-size:22px;line-height:1;width:40px;height:40px;padding:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;margin:0 0 10px}
+#adm .add.plus{font-size:44px;line-height:1;width:84px;height:84px;padding:0;border-radius:14px;display:block}
 #hoja input{width:100%;padding:12px;font-size:16px;border:3px solid #333;border-radius:8px;box-sizing:border-box}#hoja .row2{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}#hoja .msg.okm{color:#3d7a55}#hoja-msg{line-height:1.4}
 .pill.ver{font-size:11px;opacity:.75}
 #hoja{margin-bottom:8px}
