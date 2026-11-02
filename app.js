@@ -534,19 +534,22 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
 /* ---- Conectar mi hoja (v8): guarda la URL /exec en localStorage 'api_url' (la misma que ?api) ---- */
 const EXEC=/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]{10,}\/exec\/?$/,DEV=/^http:\/\/(127\.0\.0\.1|localhost):\d+\/exec$/;
 const COMO='Necesito la URL de la aplicación web, no la de la hoja. En tu hoja: Extensiones › Apps Script › Implementar › Nueva implementación › tipo «Aplicación web» (ejecutar como: yo; acceso: cualquiera) › Implementar › copia la URL que termina en /exec.';
+const hojaNorm=u=>(u||'').trim().replace(/\/$/,'');
 function hojaPaint(){const u=localStorage.getItem('api_url');const on=u&&u!=='mock';$('#hoja-est').textContent=on?'Conectado a: '+(localStorage.getItem('api_hoja')||u):'Modo DEMO (datos de EJEMPLO). Pega la URL /exec de tu Apps Script.';$('#hoja-off').hidden=!on;if(on)$('#hoja-url').value=u}
 function hojaMsg(t,ok){const m=$('#hoja-msg');m.hidden=!t;m.textContent=t||'';m.classList.toggle('okm',!!ok)}
 async function hojaCambio(){await new Promise(r=>setTimeout(r,400));borrarPines();saveSes(null);show('login');loadPuestos()}
+async function hojaColaPendiente(u){const cur=hojaNorm(localStorage.getItem('api_url')),next=hojaNorm(u);if(cur&&cur!=='mock'&&cur===next)return 0;const ps=await QueueDB.get('puestos')||[];await purgeOrphanQueue((ps||[]).map(p=>p.id||p));return await QueueDB.count()}
 $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url').value.trim();
  if(/docs\.google\.com\/spreadsheets/.test(u))return hojaMsg('Eso es la URL de la hoja de cálculo. '+COMO);
  if(!EXEC.test(u)&&!DEV.test(u))return hojaMsg('URL no válida. '+COMO);
- {const ps=await QueueDB.get('puestos')||[];await purgeOrphanQueue((ps||[]).map(p=>p.id||p));if(await QueueDB.count())return hojaMsg('Hay ventas pendientes de enviar. Sincroniza antes de cambiar de hoja.');}
+ {const n=await hojaColaPendiente(u);if(n)return hojaMsg('Hay '+n+' venta'+(n===1?'':'s')+' pendiente'+(n===1?'':'s')+' de enviar. Sincroniza o pulsa «Vaciar cola pendiente» antes de cambiar de hoja.')}
  hojaMsg('Probando conexión…');let r;try{r=await API.ping(u)}catch(e){r={ok:false,error:e.message||'Sin respuesta'}}
  if(r&&r.ok&&r.app!=='miniaturas')return hojaMsg('Esa URL responde, pero no es la app de Miniaturas (app≠miniaturas). Implementa el Code.gs de Miniaturas en tu hoja. '+COMO);
  if(!r||!r.ok)return hojaMsg('No se pudo conectar ('+((r&&(r.mensaje||r.error))||'respuesta no válida')+'). Revisa que la implementación tenga acceso «Cualquiera». '+COMO);
  localStorage.setItem('api_url',u);localStorage.setItem('api_hoja',r.hoja||'');hojaPaint();hojaMsg('Conectado a: '+(r.hoja||'?')+(r.version?' (v '+r.version+')':'')+'. Entra con el PIN de dueño de esa hoja.',1);hojaCambio()});
+$('#hoja-vaciar').onclick=()=>withBusy($('#hoja-vaciar'),async()=>{const all=await qAll();const n=all.length;if(!n)return hojaMsg('No hay ventas pendientes en este dispositivo.',1);if(!confirm('¿Vaciar '+n+' venta'+(n===1?'':'s')+' pendiente'+(n===1?'':'s')+' de este dispositivo?\nSe perderán y no se enviarán a la hoja.'))return;await qRemove(all.map(e=>e.id));st.pendDelta={};updPend();hojaMsg('Cola vaciada ('+n+'). Ya puedes GUARDAR Y PROBAR o cambiar de hoja.',1)});
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=49',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=50',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='21')return;sessionStorage.setItem('sw_reload','21');location.reload()})}
