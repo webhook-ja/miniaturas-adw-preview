@@ -124,6 +124,9 @@ dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:
 .tile-acts .tile-minus,.tile-acts .tile-plus{flex:1;max-width:56px;font-family:Pix;font-size:22px;font-weight:800;line-height:1;padding:8px 0;border:3px solid var(--k);border-radius:6px;background:var(--w);color:var(--k);cursor:pointer;box-shadow:0 3px 0 rgba(58,63,75,.35)}
 .tile-acts .tile-minus{background:var(--r);color:var(--w)}.tile-acts .tile-plus{background:var(--g,#3d9a5c);color:var(--w)}
 .tile-acts .tile-minus:active,.tile-acts .tile-plus:active{transform:translateY(2px);box-shadow:0 1px 0 var(--k)}
+.tile-ed{position:absolute;top:6px;right:6px;z-index:3;width:32px;height:32px;padding:0;border:3px solid var(--k);border-radius:6px;background:var(--w);color:var(--k);font-size:16px;line-height:1;cursor:pointer;box-shadow:0 2px 0 rgba(58,63,75,.35)}
+.tile-ed:active{transform:translateY(1px);box-shadow:0 1px 0 var(--k)}
+.who-ven{margin-top:8px}
 .line.stock-pend .n{opacity:.65}
 .line.stock-pend .n::after{content:"";display:inline-block;width:.55em;height:.55em;margin-left:.35em;border:2px solid rgba(58,63,75,.25);border-top-color:var(--k);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
 .line.low .n{background:var(--r);color:var(--w);border-color:var(--k)}

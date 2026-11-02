@@ -22,8 +22,9 @@ const API=(()=>{
  const UUID4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
  const A={
   puestos(q,d){const pins={},act=d.puestosT.filter(p=>p.activo),nombres={};act.forEach(p=>{nombres[p.id]=p.nombre||p.id});
-   d.vendedores.filter(v=>v.activo&&v.pin).forEach(v=>{pins[v.puesto]=v.pin});
-   return{puestos:act.map(p=>p.id).sort(),puestos_nombres:nombres,puestos_detalle:act.map(p=>({id:p.id,nombre:p.nombre||p.id})),demo_pins:pins}},
+   const vend=d.vendedores.filter(v=>v.activo).map(v=>({id:v.id,nombre:v.nombre,puesto:v.puesto}));
+   d.vendedores.filter(v=>v.activo&&v.pin).forEach(v=>{pins[v.puesto]=v.pin;pins[v.id]=v.pin});
+   return{puestos:act.map(p=>p.id).sort(),puestos_nombres:nombres,puestos_detalle:act.map(p=>({id:p.id,nombre:p.nombre||p.id})),vendedores:vend,demo_pins:pins}},
   demo_limpiar(q,d){untok(q.token_dueno,'dueno');d.puestosT.forEach(p=>p.activo=0);d.vendedores.forEach(v=>v.activo=false);
    d.productos.forEach(p=>{if(!['F01','F02','F03','F04'].includes(p.id))p.activo=0});d.stock={};d.asignaciones=[];
    return{ok_limpiar:true,puestos_activos:0,vendedores_activos:0,figuras_activas:d.productos.filter(p=>p.activo).length}},
@@ -35,6 +36,13 @@ const API=(()=>{
    let x=f.id&&d.productos.find(p=>p.id===f.id);if(f.id&&!x)throw'PRODUCTO_DESCONOCIDO';
    if(!x){x={id:nid(d.productos,'F',2),activo:1};d.productos.push(x)}
    Object.assign(x,{nombre:String(f.nombre).slice(0,60),precio:+f.precio,coste:+(f.coste||0),color_icono:/^#[0-9a-f]{6}$/i.test(f.color_icono)?f.color_icono:'#999999',foto_url:String(f.foto_url||'').slice(0,500),descripcion:String(f.descripcion||'').slice(0,240)});return{figura:x}},
+  product_completar(q,d){const t=untok(q.token,'vendedor');const f=q.figura||q.producto||{};if(!f.id)throw'FALTAN_DATOS';
+   const x=d.productos.find(p=>p.id===f.id&&p.activo);if(!x)throw'PRODUCTO_DESCONOCIDO';
+   if(!(d.stock[t.p]||{})[x.id]&&!stockDe(d,t.p).some(s=>s.producto===x.id))throw'PRODUCTO_NO_EN_PUESTO';
+   if(f.nombre!=null&&String(f.nombre).trim())x.nombre=String(f.nombre).trim().slice(0,60);
+   if(f.foto_url!=null)x.foto_url=String(f.foto_url).trim().slice(0,500);
+   if(f.descripcion!=null)x.descripcion=String(f.descripcion).trim().slice(0,240);
+   return{figura:{id:x.id,nombre:x.nombre,precio:x.precio,coste:x.coste,color_icono:x.color_icono,foto_url:x.foto_url||'',descripcion:x.descripcion||'',activo:1}}},
   figura_borrar(q,d){untok(q.token_dueno,'dueno');const x=d.productos.find(p=>p.id===q.id);if(!x)throw'PRODUCTO_DESCONOCIDO';x.activo=0;return{id:x.id,activo:0}},
   puesto_guardar(q,d){untok(q.token_dueno,'dueno');const p=q.puesto||{};if(!p.nombre)throw'FALTAN_DATOS';let x=p.id&&d.puestosT.find(y=>y.id===p.id);
    if(p.id&&!x)throw'PUESTO_INVALIDO';if(!x){if(d.puestosT.filter(y=>y.activo).length>=3)throw'DEMO_MAX_PUESTOS';x={id:nid(d.puestosT,'P',1),activo:1};d.puestosT.push(x);d.stock[x.id]={}}x.nombre=String(p.nombre).slice(0,40);return{puesto:x}},
@@ -64,7 +72,8 @@ const API=(()=>{
    c[0].pin=pin;return{puesto:c[0].puesto,vendedor:c[0].id,nombre:c[0].nombre,pin,ejemplo:true,no_store:true}},
   login(q,d){if(!q.dispositivo)throw'FALTAN_DATOS';if(!/^\d{6}$/.test(String(q.pin)))throw'PIN_FORMATO';if(q.dueno){if(q.pin!==d.dueno_pin)throw'PIN_INCORRECTO';return{rol:'dueno',token_dueno:tok({rol:'dueno'})}}
    if(!q.puesto)throw'FALTAN_DATOS';if(!d.puestosT.some(p=>p.id===q.puesto&&p.activo))throw'PUESTO_INVALIDO';
-   const matches=d.vendedores.filter(v=>v.activo&&v.pin===String(q.pin)&&(!q.vendedor_id||v.id===q.vendedor_id));
+   if(!q.vendedor_id)throw'VENDEDOR_REQUERIDO';
+   const matches=d.vendedores.filter(v=>v.activo&&v.pin===String(q.pin)&&String(v.id)===String(q.vendedor_id));
    if(!matches.length)throw'PIN_INCORRECTO';if(matches.length>1)throw'VARIOS_VENDEDORES';const v=matches[0];
    v.puesto=q.puesto;d.asignaciones=d.asignaciones||[];d.asignaciones.push({id:crypto.randomUUID(),fecha_hora:API.ahoraMadrid(),vendedor:v.id,puesto:q.puesto,origen:'login'});
    const puNom=(d.puestosT.find(p=>p.id===q.puesto)||{}).nombre||q.puesto;
@@ -124,7 +133,8 @@ const API=(()=>{
   pinCambiar:(token_dueno,puesto,vendedor_id)=>call({accion:'pin_crear_o_cambiar',token_dueno,puesto,vendedor_id}),estadoDueno:token_dueno=>call({accion:'estado_dueno',token_dueno}),
   controlDueno:(token_dueno,fecha)=>call({accion:'control_dueno',token_dueno,...(fecha?{fecha}:{})}),
   stockAck:(token,snapshot)=>call({accion:'stock_ack',token,snapshot:snapshot||[]}),
-  login:(pin,puesto)=>call(puesto==='dueno'?{accion:'login',dueno:true,pin,dispositivo:dev()}:{accion:'login',puesto,pin,dispositivo:dev()}),
+  login:(pin,puesto,vendedor_id)=>call(puesto==='dueno'?{accion:'login',dueno:true,pin,dispositivo:dev()}:{accion:'login',puesto,pin,vendedor_id,dispositivo:dev()}),
+  productCompletar:(token,figura)=>call({accion:'product_completar',token,figura}),
   catalogo:(token,puesto)=>call(puesto?{accion:'catalogo',token_dueno:token,puesto}:{accion:'catalogo',token}),
   ventasLote:(token,ventas)=>call({accion:'ventas_lote',token,ventas}),
   stockGuardar:(token_dueno,puesto,items)=>call({accion:'stock_inicial_guardar',token_dueno,puesto,items}),
