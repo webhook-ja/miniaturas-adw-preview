@@ -16,25 +16,40 @@ const saveSes=s=>{st.ses=s;QueueDB.set('ses',s)};
 /* ---- PIN ---- */
 let pin='';const renderPin=()=>$('#pin-dots').textContent='●'.repeat(pin.length)+'○'.repeat(Math.max(0,6-pin.length));
 st.demoPins={};
+const GAS_INSTR='1) Abre tu hoja → Extensiones → Apps Script\n2) Borra el Code.gs viejo y pega el nuevo (gas-v4k; ya está en el portapapeles del PC si lo copió el agente)\n3) Guarda (Ctrl+S)\n4) Implementar → Administrar implementaciones → lápiz ✏️ de la App web → Versión: Nueva versión → Implementar\n5) Vuelve a Miniaturas, recarga, y el login debe listar vendedores.\nURL /exec NO cambia; solo hay que publicar Nueva versión.';
+function cacheVendorsLogin(list){if(!Array.isArray(list))return;const clean=list.filter(v=>v&&v.id&&(v.activo==null||v.activo)).map(v=>({id:v.id,nombre:v.nombre,puesto:v.puesto}));
+ st.vendors=clean;try{QueueDB.set('vendedores_login',clean)}catch(_){}}
+function vendorsFromAdm(){if(!adm||!Array.isArray(adm.vendedores))return null;
+ return adm.vendedores.filter(v=>v&&v.id&&v.activo).map(v=>({id:v.id,nombre:v.nombre,puesto:v.puesto}))}
+function showGasHelp(on){const box=$('#login-gas-help');if(box)box.hidden=!on}
 function paintLoginPin(){const el=$('#login-pin');if(!el)return;const who=$('#who').value;
  if(who==='dueno'){el.hidden=false;el.textContent='PIN dueño · 999999';return}
  /* Solo PIN del vendedor elegido (no el del puesto: solapa el select vacío). */
  const vid=$('#who-ven')&&$('#who-ven').value;const pin=vid&&st.demoPins&&st.demoPins[vid];
  if(pin){el.hidden=false;el.textContent='PIN · '+pin;return}
+ /* API antigua: demo_pins solo por puesto — muestra PIN del puesto. */
+ if(st._vendorsApiMissing&&st.demoPins&&st.demoPins[who]){el.hidden=false;el.textContent='PIN · '+st.demoPins[who];return}
  el.hidden=true;el.textContent=''}
 function paintVendorSelect(){const ven=$('#who-ven'),who=$('#who').value;if(!ven)return;
- if(who==='dueno'){ven.hidden=true;ven.innerHTML='';const m=$('#login-msg');if(m&&/vendedores|Equipo|Apps Script/i.test(m.textContent||''))m.textContent='';paintLoginPin();return}
+ if(who==='dueno'){ven.hidden=true;ven.innerHTML='';const m=$('#login-msg');if(m&&/vendedores|Equipo|Apps Script|API antigua|Nueva versión/i.test(m.textContent||''))m.textContent='';showGasHelp(0);paintLoginPin();return}
+ /* Si puestos no trajo vendedores, reusar caché dueño/adm. */
+ if(!(st.vendors&&st.vendors.length)){const fromAdm=vendorsFromAdm();if(fromAdm&&fromAdm.length)cacheVendorsLogin(fromAdm)}
  /* Multi-puesto: cualquier vendedor activo puede entrar en el puesto elegido (PIN identifica). */
  const list=(st.vendors||[]).filter(v=>v&&v.id).slice().sort((a,b)=>{
   const ap=String(a.puesto)===String(who)?0:1,bp=String(b.puesto)===String(who)?0:1;
   if(ap!==bp)return ap-bp;return String(a.nombre||'').localeCompare(String(b.nombre||''),'es')});
- ven.hidden=false;
+ if(!list.length&&st._vendorsApiMissing){
+  /* gas-v4f: login por PIN+puesto sin lista — no dejar «Sin vendedores» eterno. */
+  ven.hidden=true;ven.innerHTML='';st._vendorSelectOptional=true;
+  const m=$('#login-msg');
+  if(m&&!sessionStorage.getItem('gas_help_soft')){m.textContent='API antigua: entra con el PIN del puesto. Para ver nombres: publica gas-v4k (Nueva versión).';sessionStorage.setItem('gas_help_soft','1')}
+  else if(m&&/Sin vendedores|API antigua sin lista/i.test(m.textContent||''))m.textContent='';
+  showGasHelp(1);paintLoginPin();return}
+ st._vendorSelectOptional=false;ven.hidden=false;showGasHelp(0);
  if(!list.length){ven.innerHTML='<option value="">Sin vendedores</option>';
-  const m=$('#login-msg');if(m)m.textContent=st._vendorsApiMissing
-   ?'API antigua sin lista de vendedores — pega Code.gs gas-v4k+ y publica /exec'
-   :'No hay vendedores activos — créalos en Dueño › Equipo';
+  const m=$('#login-msg');if(m)m.textContent='No hay vendedores activos — créalos en Dueño › Equipo';
   paintLoginPin();return}
- const m=$('#login-msg');if(m&&/vendedores|Equipo|Apps Script|API antigua/i.test(m.textContent||''))m.textContent='';
+ const m=$('#login-msg');if(m&&/vendedores|Equipo|Apps Script|API antigua|Nueva versión/i.test(m.textContent||''))m.textContent='';
  const keep=ven.value;ven.innerHTML='<option value="">— Elige vendedor —</option>'+list.map(v=>{
   const same=String(v.puesto)===String(who);return `<option value="${esc(v.id)}">${esc(v.nombre||v.id)}${same?'':' · '+esc(puLabel(v.puesto))}</option>`}).join('');
  if(keep&&[...ven.options].some(o=>o.value===keep))ven.value=keep;paintLoginPin()}
@@ -48,27 +63,32 @@ function puLabel(id){const k=String(id??'');
 function puLoginLabel(id){const k=String(id??'');const nm=puLabel(k);return(nm&&nm!==k)?(nm+' · '+k):k}
 async function loadPuestos(){let ps=await QueueDB.get('puestos');
  try{const cached=await QueueDB.get('puestos_nombres');if(cached)mergePuestoNames(cached)}catch(_){}
- try{const cachedV=await QueueDB.get('vendedores_login');if(Array.isArray(cachedV))st.vendors=cachedV}catch(_){}
+ try{const cachedV=await QueueDB.get('vendedores_login');if(Array.isArray(cachedV)&&cachedV.length)st.vendors=cachedV}catch(_){}
  try{const r=await API.puestos();if(r.ok){ps=r.puestos;QueueDB.set('puestos',ps);st.demoPins=r.demo_pins||{};
   st._vendorsApiMissing=!Array.isArray(r.vendedores);
-  if(Array.isArray(r.vendedores)){st.vendors=r.vendedores;try{QueueDB.set('vendedores_login',st.vendors)}catch(_){}}
+  if(Array.isArray(r.vendedores))cacheVendorsLogin(r.vendedores);
+  else{const fromAdm=vendorsFromAdm();if(fromAdm&&fromAdm.length)cacheVendorsLogin(fromAdm)}
   if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);
   else if(Array.isArray(r.puestos_detalle))mergePuestoNames(Object.fromEntries(r.puestos_detalle.filter(p=>p&&p.id).map(p=>[p.id,p.nombre||p.id])))}}catch(e){}
  $('#who').innerHTML=(ps||[]).map(p=>`<option value="${String(p).replace(/"/g,'&quot;')}">${esc(puLoginLabel(p))}</option>`).join('')+'<option value="dueno">DUEÑO</option>';
  paintVendorSelect()}
 $('#who').onchange=()=>paintVendorSelect();
 const _whoVen=$('#who-ven');if(_whoVen)_whoVen.onchange=paintLoginPin;
+const _copyGas=$('#copy-gas-instr');if(_copyGas)_copyGas.onclick=async()=>{try{await navigator.clipboard.writeText(GAS_INSTR);_copyGas.textContent='Copiado ✓';setTimeout(()=>{_copyGas.textContent='Copiar pasos'},1500)}catch(_){alert(GAS_INSTR)}};
 $('#be').textContent=API.backend==='mock'?'MOCK · DATOS DE EJEMPLO':'Apps Script';
 ['1','2','3','4','5','6','7','8','9','⌫','0','OK'].forEach(k=>{const b=document.createElement('button');b.textContent=k;b.dataset.k=k;if(k==='OK')b.className='green';
  b.onclick=()=>{if(k==='⌫')pin=pin.slice(0,-1);else if(k==='OK')doLogin();else if(pin.length<8)pin+=k;renderPin()};$('#pad').append(b)});
 const ERR={PIN_FORMATO:'El PIN tiene 6 cifras',PIN_INCORRECTO:'PIN incorrecto',DEMASIADOS_INTENTOS:'Demasiados intentos: espera 15 min',VENDEDOR_INACTIVO:'Vendedor dado de baja',VENDEDOR_REQUERIDO:'Elige tu nombre (vendedor)',VARIOS_VENDEDORES:'Elige el vendedor en la lista',PRODUCTO_NO_EN_PUESTO:'Esa figura no está en este puesto'};
 async function doLogin(){const okb=[...$('#pad').querySelectorAll('button')].find(b=>b.dataset.k==='OK');
- await withBusy(okb,async()=>{$('#login-msg').textContent='';const who=$('#who').value;const vid=who==='dueno'?'':($('#who-ven')&&$('#who-ven').value||'');
- if(who!=='dueno'&&!vid)return $('#login-msg').textContent=ERR.VENDEDOR_REQUERIDO;
+ await withBusy(okb,async()=>{$('#login-msg').textContent='';showGasHelp(0);const who=$('#who').value;const vid=who==='dueno'?'':($('#who-ven')&&$('#who-ven').value||'');
+ /* API antigua (sin lista): PIN+puesto basta. Con gas-v4k+ hace falta elegir vendedor. */
+ if(who!=='dueno'&&!vid&&!st._vendorSelectOptional)return $('#login-msg').textContent=ERR.VENDEDOR_REQUERIDO;
  try{const r=await API.login(pin,who,vid||undefined);pin='';renderPin();
  if(!r.ok)return $('#login-msg').textContent=ERR[r.error]||r.error;
  if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);
  if(r.vendedor&&r.vendedor.puesto_nombre)mergePuestoNames({[r.vendedor.puesto]:r.vendedor.puesto_nombre});
+ if(r.vendedor&&r.vendedor.id){const row={id:r.vendedor.id,nombre:r.vendedor.nombre,puesto:r.vendedor.puesto};
+  const cur=st.vendors||[];if(!cur.some(v=>String(v.id)===String(row.id)))cacheVendorsLogin(cur.concat([row]));else cacheVendorsLogin(cur.map(v=>String(v.id)===String(row.id)?row:v))}
  saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre,vid:r.vendedor.id||''});start()}
  catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}})}
 function paintStallTitle(){if(!st.ses||st.ses.rol!=='vendedor')return;const el=$('#stall-name');if(!el)return;
@@ -410,6 +430,8 @@ var adm=null,admTab='figuras';
 async function admCall(accion,extra){const r=await API.admin(accion,st.ses.token_dueno,extra).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok&&tokenMalo(r))throw 0;return r}
 async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;st._puMap=null;
  if(adm.puestos)mergePuestoNames(Object.fromEntries(adm.puestos.map(p=>[p.id,p.nombre])));
+ /* Caché pública-segura (id/nombre/puesto) para login aunque /exec sea gas-v4f sin puestos.vendedores. */
+ {const fromAdm=vendorsFromAdm();if(fromAdm&&fromAdm.length)cacheVendorsLogin(fromAdm)}
  if(!adm.stockByPu){if(st.lastStock&&Date.now()-(st.ownerAt||0)<90000)adm.stockByPu=st.lastStock;
   else{try{const e=await API.estadoDueno(st.ses.token_dueno);if(e&&e.ok){adm.stockByPu=e.stock||{};st.lastStock=adm.stockByPu;mergePuestoNames(e.puestos_nombres)}}catch(_){adm.stockByPu=adm.stockByPu||{}}}}
  admPaint();if(admTab==='puestos')ensurePines().then(()=>adm&&admTab==='puestos'&&admPaint())}
@@ -546,10 +568,12 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
  hojaMsg('Probando conexión…');let r;try{r=await API.ping(u)}catch(e){r={ok:false,error:e.message||'Sin respuesta'}}
  if(r&&r.ok&&r.app!=='miniaturas')return hojaMsg('Esa URL responde, pero no es la app de Miniaturas (app≠miniaturas). Implementa el Code.gs de Miniaturas en tu hoja. '+COMO);
  if(!r||!r.ok)return hojaMsg('No se pudo conectar ('+((r&&(r.mensaje||r.error))||'respuesta no válida')+'). Revisa que la implementación tenga acceso «Cualquiera». '+COMO);
- localStorage.setItem('api_url',u);localStorage.setItem('api_hoja',r.hoja||'');hojaPaint();hojaMsg('Conectado a: '+(r.hoja||'?')+(r.version?' (v '+r.version+')':'')+'. Entra con el PIN de dueño de esa hoja.',1);hojaCambio()});
+ localStorage.setItem('api_url',u);localStorage.setItem('api_hoja',r.hoja||'');hojaPaint();
+ const ver=String(r.version||'');const oldApi=ver&&!/^gas-v4[k-z]/i.test(ver)&&ver!=='gas-v4k+';
+ hojaMsg('Conectado a: '+(r.hoja||'?')+(ver?' (v '+ver+')':'')+'.'+(oldApi?' ⚠ API antigua: pega Code.gs gas-v4k y publica Nueva versión /exec.':' Entra con el PIN de dueño de esa hoja.'),!oldApi);hojaCambio()});
 $('#hoja-vaciar').onclick=()=>withBusy($('#hoja-vaciar'),async()=>{const all=await qAll();const n=all.length;if(!n)return hojaMsg('No hay ventas pendientes en este dispositivo.',1);if(!confirm('¿Vaciar '+n+' venta'+(n===1?'':'s')+' pendiente'+(n===1?'':'s')+' de este dispositivo?\nSe perderán y no se enviarán a la hoja.'))return;await qRemove(all.map(e=>e.id));st.pendDelta={};updPend();hojaMsg('Cola vaciada ('+n+'). Ya puedes GUARDAR Y PROBAR o cambiar de hoja.',1)});
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=50',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
- navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='21')return;sessionStorage.setItem('sw_reload','21');location.reload()})}
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=51',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+ navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='22')return;sessionStorage.setItem('sw_reload','22');location.reload()})}
