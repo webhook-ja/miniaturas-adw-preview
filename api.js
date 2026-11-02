@@ -105,7 +105,7 @@ const API=(()=>{
     porPu[pu].importe+=r.importe});tot.beneficio=Math.round(tot.beneficio*100)/100;
    return{fecha:hoy,totales:tot,por_vendedor:Object.values(por),por_puesto:Object.values(porPu),
     ventas:lista.map(r=>[r.id,r.fecha_hora,r.vendedor,r.puesto,r.producto,r.cantidad,r.importe,r.ref_id||'',r.justificacion_tipo||'',r.justificacion||''])}}};
- const mock=async req=>{await new Promise(r=>setTimeout(r,120));if(!navigator.onLine)throw Object.assign(new Error('offline'),{red:true});
+ const mock=async req=>{if(!navigator.onLine)throw Object.assign(new Error('offline'),{red:true});
   const d=load();try{const f=A[req.accion];if(!f)throw'ACCION_DESCONOCIDA';const r=f(req,d);save(d);return{ok:true,...r}}catch(c){return{ok:false,error:typeof c==='string'?c:'ERROR_INTERNO',mensaje:String(c)}}};
  const call=req=>(url()?http:mock)(req);
  const dev=()=>{let d=localStorage.getItem('dispositivo');if(!d){d='web-'+crypto.randomUUID().slice(0,8);localStorage.setItem('dispositivo',d)}return d};
