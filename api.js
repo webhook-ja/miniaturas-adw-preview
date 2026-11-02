@@ -12,8 +12,8 @@ const API=(()=>{
  const nid=(arr,pre,w)=>pre+String(1+Math.max(0,...arr.map(x=>+String(x.id).slice(pre.length)||0))).padStart(w,'0');
  /* Clean demo base: no puestos (user recreates P1/P2); 4 products only; dueño 999999. */
  const SEED={puestosT:[],vendedores:[],dueno_pin:'999999',
-  productos:[['F01','Dragón EJEMPLO',15,4.2,'#c8706a'],['F02','Caballero EJEMPLO',12,3,'#6f8fc4'],['F03','Castillo EJEMPLO',25,8,'#9c8574'],['F04','Robot EJEMPLO',10,2.5,'#8a9099']]
-   .map(([id,nombre,precio,coste,color_icono])=>({id,nombre,precio,coste,color_icono,foto_url:'',activo:1})),
+  productos:[['F01','Dragón EJEMPLO',15,4.2,'#c8706a','Miniatura de dragón'],['F02','Caballero EJEMPLO',12,3,'#6f8fc4','Figura de caballero'],['F03','Castillo EJEMPLO',25,8,'#9c8574',''],['F04','Robot EJEMPLO',10,2.5,'#8a9099','']]
+   .map(([id,nombre,precio,coste,color_icono,descripcion])=>({id,nombre,precio,coste,color_icono,foto_url:'',descripcion:descripcion||'',activo:1})),
   stock:{},ventas:[],asignaciones:[]};
  const load=()=>JSON.parse(localStorage.getItem(K)||'null')||JSON.parse(JSON.stringify(SEED)),save=d=>localStorage.setItem(K,JSON.stringify(d));
  const tok=o=>btoa(JSON.stringify({...o,exp:Date.now()+14*3600e3}))+'.mock',untok=(t,rol)=>{if(!t||!String(t).endsWith('.mock'))throw'TOKEN_INVALIDO';
@@ -34,7 +34,7 @@ const API=(()=>{
   figura_guardar(q,d){untok(q.token_dueno,'dueno');const f=q.figura||{};if(!f.nombre||!(Number(f.precio)>=0))throw'FALTAN_DATOS';
    let x=f.id&&d.productos.find(p=>p.id===f.id);if(f.id&&!x)throw'PRODUCTO_DESCONOCIDO';
    if(!x){x={id:nid(d.productos,'F',2),activo:1};d.productos.push(x)}
-   Object.assign(x,{nombre:String(f.nombre).slice(0,60),precio:+f.precio,coste:+(f.coste||0),color_icono:/^#[0-9a-f]{6}$/i.test(f.color_icono)?f.color_icono:'#999999',foto_url:f.foto_url||''});return{figura:x}},
+   Object.assign(x,{nombre:String(f.nombre).slice(0,60),precio:+f.precio,coste:+(f.coste||0),color_icono:/^#[0-9a-f]{6}$/i.test(f.color_icono)?f.color_icono:'#999999',foto_url:String(f.foto_url||'').slice(0,500),descripcion:String(f.descripcion||'').slice(0,240)});return{figura:x}},
   figura_borrar(q,d){untok(q.token_dueno,'dueno');const x=d.productos.find(p=>p.id===q.id);if(!x)throw'PRODUCTO_DESCONOCIDO';x.activo=0;return{id:x.id,activo:0}},
   puesto_guardar(q,d){untok(q.token_dueno,'dueno');const p=q.puesto||{};if(!p.nombre)throw'FALTAN_DATOS';let x=p.id&&d.puestosT.find(y=>y.id===p.id);
    if(p.id&&!x)throw'PUESTO_INVALIDO';if(!x){if(d.puestosT.filter(y=>y.activo).length>=3)throw'DEMO_MAX_PUESTOS';x={id:nid(d.puestosT,'P',1),activo:1};d.puestosT.push(x);d.stock[x.id]={}}x.nombre=String(p.nombre).slice(0,40);return{puesto:x}},
@@ -67,7 +67,8 @@ const API=(()=>{
    const matches=d.vendedores.filter(v=>v.activo&&v.pin===String(q.pin)&&(!q.vendedor_id||v.id===q.vendedor_id));
    if(!matches.length)throw'PIN_INCORRECTO';if(matches.length>1)throw'VARIOS_VENDEDORES';const v=matches[0];
    v.puesto=q.puesto;d.asignaciones=d.asignaciones||[];d.asignaciones.push({id:crypto.randomUUID(),fecha_hora:API.ahoraMadrid(),vendedor:v.id,puesto:q.puesto,origen:'login'});
-   return{rol:'vendedor',vendedor:{id:v.id,nombre:v.nombre,puesto:q.puesto},token:tok({rol:'vendedor',vid:v.id,p:q.puesto})}},
+   const puNom=(d.puestosT.find(p=>p.id===q.puesto)||{}).nombre||q.puesto;
+   return{rol:'vendedor',vendedor:{id:v.id,nombre:v.nombre,puesto:q.puesto,puesto_nombre:puNom},puestos_nombres:{[q.puesto]:puNom},token:tok({rol:'vendedor',vid:v.id,p:q.puesto})}},
   control_dueno(q,d){untok(q.token_dueno,'dueno');const hoy=q.fecha||API.hoyMadrid();const hoyV=d.ventas.filter(r=>String(r.fecha_hora).slice(0,10)===hoy);
    const st=(vid,lista)=>{let vendidas=0,deshechas=0;lista.forEach(r=>{if(r.vendedor!==vid)return;if(+r.cantidad===-1)vendidas++;else if(+r.cantidad===1)deshechas++});return{vendidas,deshechas,neto:vendidas-deshechas}};
    const agg=(lista,key)=>{const m={};lista.forEach(r=>{const c=+r.cantidad;if(c!==-1&&c!==1)return;const k=key(r);m[k]=m[k]||{key:k,vendidas:0,deshechas:0,importe:0};if(c===-1){m[k].vendidas++;m[k].importe+=r.importe}else{m[k].deshechas++;m[k].importe+=r.importe}});
@@ -79,7 +80,9 @@ const API=(()=>{
     vendedores:d.vendedores.filter(v=>v.activo).map(v=>{const hist=(d.asignaciones||[]).filter(a=>a.vendedor===v.id);const seen={};const puestos=[];hist.forEach(a=>{if(!seen[a.puesto]){seen[a.puesto]={puesto:a.puesto,nombre:pNames[a.puesto]||a.puesto,veces:0,ultimo:a.fecha_hora};puestos.push(seen[a.puesto])}seen[a.puesto].veces++;seen[a.puesto].ultimo=a.fecha_hora});
      if(!puestos.length&&v.puesto)puestos.push({puesto:v.puesto,nombre:pNames[v.puesto]||v.puesto,veces:0,ultimo:''});
      return{id:v.id,nombre:v.nombre,puesto_activo:v.puesto,historial_puestos:puestos,asignaciones:hist.slice(-20).reverse(),hoy:st(v.id,hoyV),total:st(v.id,d.ventas)}}),no_store:true}},
-  catalogo(q,d){let pu;if(q.token_dueno){untok(q.token_dueno,'dueno');pu=q.puesto;if(!pu)throw'PUESTO_INVALIDO'}else pu=untok(q.token,'vendedor').p;return{puesto:pu,productos:d.productos.filter(p=>p.activo).map(({activo,...p})=>p),stock:stockDe(d,pu)}},
+  catalogo(q,d){let pu;if(q.token_dueno){untok(q.token_dueno,'dueno');pu=q.puesto;if(!pu)throw'PUESTO_INVALIDO'}else pu=untok(q.token,'vendedor').p;
+   const puNom=(d.puestosT.find(p=>p.id===pu)||{}).nombre||pu;
+   return{puesto:pu,puesto_nombre:puNom,puestos_nombres:{[pu]:puNom},productos:d.productos.filter(p=>p.activo).map(({activo,...p})=>p),stock:stockDe(d,pu)}},
   ventas_lote(q,d){const t=untok(q.token,'vendedor');if(!Array.isArray(q.ventas)||q.ventas.length>200)throw'LOTE_INVALIDO';
    const precios=Object.fromEntries(d.productos.map(p=>[p.id,p.precio])),vistos=new Set(d.ventas.map(r=>r.id)),aceptadas=[],duplicadas=[],rechazadas=[],marcadas=[];
    for(const v of q.ventas){const id=String(v&&v.id||'');if(!UUID4.test(id)){rechazadas.push({id,motivo:'ID_INVALIDO'});continue}if(vistos.has(id)){duplicadas.push(id);continue}

@@ -52,8 +52,11 @@ main{padding:18px}h1,h2{text-shadow:2px 2px 0 rgba(0,0,0,.25);font-size:14px;mar
 .grid{gap:22px;padding-top:12px}
 .tile{border-width:3px;border-radius:10px;box-shadow:0 6px 0 rgba(58,63,75,.4),inset 0 -6px 0 rgba(0,0,0,.08),inset 0 4px 0 rgba(255,255,255,.3);padding:30px 10px 14px;filter:saturate(.75)}
 .tile::before,.tile::after{border-width:3px;box-shadow:none}
-.tile .ic{border-width:3px;border-radius:4px;box-shadow:inset -4px -4px 0 rgba(0,0,0,.12),inset 4px 4px 0 rgba(255,255,255,.25)}
+.tile .ic-wrap{display:flex;justify-content:center;margin:0 auto 6px}
+.tile .ic{width:72px;height:72px;border-width:3px;border-radius:4px;box-shadow:inset -4px -4px 0 rgba(0,0,0,.12),inset 4px 4px 0 rgba(255,255,255,.25);object-fit:cover}
 .tile .nm{text-shadow:1px 1px 0 rgba(0,0,0,.3);font-size:15px}
+.tile .desc{font-size:12px;line-height:1.25;opacity:.92;margin:2px 4px 6px;min-height:0;font-weight:600;text-shadow:1px 1px 0 rgba(0,0,0,.25)}
+dialog textarea{width:100%;font:inherit;padding:10px;border:3px solid var(--k);border-radius:6px;resize:vertical;min-height:4.5em;box-sizing:border-box}
 .tile .st{border-width:3px;border-radius:6px;font-size:26px}
 .tile.low .st{animation:none}
 .undo,.line,table{border-width:3px}.line{box-shadow:0 3px 0 rgba(58,63,75,.3);border-radius:8px;padding:10px 12px;margin-bottom:12px}

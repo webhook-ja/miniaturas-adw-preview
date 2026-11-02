@@ -36,8 +36,12 @@ const ERR={PIN_FORMATO:'El PIN tiene 6 cifras',PIN_INCORRECTO:'PIN incorrecto',D
 async function doLogin(){const okb=[...$('#pad').querySelectorAll('button')].find(b=>b.dataset.k==='OK');
  await withBusy(okb,async()=>{$('#login-msg').textContent='';const who=$('#who').value;try{const r=await API.login(pin,who);pin='';renderPin();
  if(!r.ok)return $('#login-msg').textContent=ERR[r.error]||r.error;
+ if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);
+ if(r.vendedor&&r.vendedor.puesto_nombre)mergePuestoNames({[r.vendedor.puesto]:r.vendedor.puesto_nombre});
  saveSes(r.rol==='dueno'?{rol:'dueno',token_dueno:r.token_dueno}:{rol:'vendedor',token:r.token,puesto:r.vendedor.puesto,nombre:r.vendedor.nombre});start()}
  catch(e){$('#login-msg').textContent='Sin conexión: el primer acceso necesita red'}})}
+function paintStallTitle(){if(!st.ses||st.ses.rol!=='vendedor')return;const el=$('#stall-name');if(!el)return;
+ el.textContent=st.ses.nombre+' · '+puLabel(st.ses.puesto)}
 function paintBarSum(data){const el=$('#bar-sum');if(!el)return;
  if(!st.ses||st.ses.rol!=='dueno'){el.hidden=true;el.textContent='';el.removeAttribute('title');return}
  el.hidden=false;
@@ -48,7 +52,7 @@ function paintBarSum(data){const el=$('#bar-sum');if(!el)return;
   const n=x.nombre||x.vendedor||'?';const short=String(n).length>10?String(n).slice(0,9)+'…':n;return short+' '+(x.unidades??x.vendidas??0)});
  const line=`Hoy ${uds}u · ${eur}€`+(bits.length?' · '+bits.join(' · '):'');
  el.textContent=line;el.title=por.map(x=>`${x.nombre||x.vendedor||'?'} · ${puLabel(x.puesto||x.puesto_activo||'')} · ${x.unidades??x.vendidas??0}u · ${x.importe??'—'}€`).join('\n')||line}
-function start(){if(st.ses.rol==='vendedor'){$('#stall-name').textContent=st.ses.nombre+' · '+st.ses.puesto;show('stall');paintBarSum(null);loadStall();sync()}else{show('owner');paintBarSum(null);loadOwner().then(()=>{const idle=window.requestIdleCallback||(cb=>setTimeout(cb,180));idle(()=>{if(st.ses&&st.ses.rol==='dueno')loadControl()}, {timeout:800})})}}
+function start(){if(st.ses.rol==='vendedor'){paintStallTitle();show('stall');paintBarSum(null);loadStall();sync()}else{show('owner');paintBarSum(null);loadOwner().then(()=>{const idle=window.requestIdleCallback||(cb=>setTimeout(cb,180));idle(()=>{if(st.ses&&st.ses.rol==='dueno')loadControl()}, {timeout:800})})}}
 $('#logout').onclick=()=>{borrarPines();st.qMem=null;st.pendDelta={};saveSes(null);$('#undo').hidden=true;paintBarSum(null);show('login')};
 function tokenMalo(r){if(['TOKEN_INVALIDO','TOKEN_CADUCADO','VENDEDOR_INACTIVO'].includes(r.error)){/* la cola NO se borra */saveSes(null);show('login');$('#login-msg').textContent='Sesión caducada: vuelve a meter el PIN (las ventas pendientes se conservan)';return true}}
 /* ---- Cola en memoria: evita IndexedDB en cada tap ---- */
@@ -66,31 +70,40 @@ function paintAllTileQtys(){document.querySelectorAll('#grid .tile[data-id]').fo
 const setStock=arr=>{st.stock=Object.fromEntries((arr||[]).map(s=>[s.producto,s.quedan]));if(st.ses)QueueDB.set('stock_'+st.ses.puesto,st.stock)};
 async function refreshCatalogQuiet(){if(!st.ses||st.ses.rol!=='vendedor'||!navigator.onLine)return;
  try{const r=await API.catalogo(st.ses.token);if(!r.ok){tokenMalo(r);return}
-  st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();
-  if($('#grid').querySelector('.tile'))paintAllTileQtys();else renderGrid()}catch(_){}}
-async function loadStall(){const P=st.ses.puesto;await qAll();rebuildPendDelta();
+  if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);else if(r.puesto_nombre)mergePuestoNames({[r.puesto||st.ses.puesto]:r.puesto_nombre});
+  paintStallTitle();st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();
+  if($('#grid').querySelector('.tile')){paintAllTileQtys();renderGrid()}else renderGrid()}catch(_){}}
+async function loadStall(){const P=st.ses.puesto;paintStallTitle();await qAll();rebuildPendDelta();
  const cachedProds=await QueueDB.get('prods'),cachedStock=await QueueDB.get('stock_'+P);
  if(cachedProds&&cachedProds.length)st.prods=cachedProds;
  if(cachedStock&&typeof cachedStock==='object')st.stock=cachedStock;
  if(st.prods.length&&Object.keys(st.stock).length){renderGrid();updPend()}
  else{$('#grid').innerHTML='<p class="msg">Cargando catálogo…</p>'}
  try{if(!navigator.onLine)throw Object.assign(new Error('offline'),{red:true});
-  const r=await API.catalogo(st.ses.token);if(r.ok){st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();renderGrid()}
+  const r=await API.catalogo(st.ses.token);if(r.ok){
+   if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);else if(r.puesto_nombre)mergePuestoNames({[r.puesto||P]:r.puesto_nombre});
+   paintStallTitle();st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();renderGrid()}
   else tokenMalo(r)}catch(e){
   if(!st.prods.length||!Object.keys(st.stock).length)$('#grid').innerHTML='<p class="msg">Sin catálogo en caché. Conéctate una vez para poder vender sin red.</p>'}
  updPend();if(navigator.onLine)sync()}
 function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelta();const g=$('#grid'),keep=new Map();
  [...g.querySelectorAll('.tile[data-id]')].forEach(t=>keep.set(t.dataset.id,t));
  const want=st.prods.filter(p=>p.id in st.stock);const seen=new Set();
- want.forEach(p=>{seen.add(p.id);let b=keep.get(p.id);const s=qtyOf(p.id);
-  if(!b){b=document.createElement('div');b.dataset.id=p.id;b.style.setProperty('--c',p.color_icono);const img=API.driveImg(p.foto_url);
-   b.innerHTML=`${img?`<img class="ic" alt="" loading="lazy" decoding="async" width="56" height="56" src="${img}">`:`<span class="ic" style="--ic:${p.color_icono}"></span>`}<div class="nm"></div><div class="st"></div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
-   b.querySelector('.nm').textContent=p.nombre;const im=b.querySelector('img');if(im)im.onerror=()=>{const sp=document.createElement('span');sp.className='ic';sp.style.setProperty('--ic',p.color_icono);im.replaceWith(sp)};
-   b.querySelector('.tile-minus').onclick=e=>{e.stopPropagation();sell(p)};
-   b.querySelector('.tile-plus').onclick=e=>{e.stopPropagation();restock(p)};
-   b.addEventListener('click',()=>sell(p));g.append(b)}
-  b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'');b.dataset.s=String(s);const stEl=b.querySelector('.st');if(stEl)stEl.textContent=String(s);
-  /* refresh handlers product ref */b._prod=p});
+ want.forEach(p=>{seen.add(p.id);let b=keep.get(p.id);const s=qtyOf(p.id);const img=API.driveImg(p.foto_url);const desc=String(p.descripcion||'').trim();
+  if(!b){b=document.createElement('div');b.dataset.id=p.id;b.style.setProperty('--c',p.color_icono);
+   b.innerHTML=`<div class="ic-wrap"></div><div class="nm"></div><div class="desc" hidden></div><div class="st"></div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
+   b.querySelector('.tile-minus').onclick=e=>{e.stopPropagation();sell(b._prod||p)};
+   b.querySelector('.tile-plus').onclick=e=>{e.stopPropagation();restock(b._prod||p)};
+   b.addEventListener('click',()=>sell(b._prod||p));g.append(b)}
+  b.style.setProperty('--c',p.color_icono||'#999');
+  const wrap=b.querySelector('.ic-wrap');if(wrap){const cur=wrap.querySelector('img,span.ic');
+   if(img){if(!cur||cur.tagName!=='IMG'||cur.getAttribute('src')!==img){wrap.innerHTML=`<img class="ic" alt="" loading="lazy" decoding="async" width="72" height="72" src="${img}">`;const im=wrap.querySelector('img');if(im)im.onerror=()=>{wrap.innerHTML=`<span class="ic" style="--ic:${p.color_icono||'#999'}"></span>`}}
+   }else if(!cur||cur.tagName==='IMG'){wrap.innerHTML=`<span class="ic" style="--ic:${p.color_icono||'#999'}"></span>`}
+   else cur.style.setProperty('--ic',p.color_icono||'#999')}
+  const nm=b.querySelector('.nm');if(nm)nm.textContent=p.nombre;
+  const de=b.querySelector('.desc');if(de){if(desc){de.hidden=false;de.textContent=desc}else{de.hidden=true;de.textContent=''}}
+  b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'')+(img?' has-img':'');b.dataset.s=String(s);const stEl=b.querySelector('.st');if(stEl)stEl.textContent=String(s);
+  b._prod=p});
  keep.forEach((t,id)=>{if(!seen.has(id))t.remove()})}
 const evento=(p,c)=>({id:uuid(),fecha_hora:API.ahoraMadrid(),producto:p,cantidad:c,_puesto:st.ses.puesto,_ts:Date.now()});
 function sell(p){const s=qtyOf(p.id);if(s<=0){pop(true);return}
@@ -296,7 +309,7 @@ async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#
 function form(titulo,campos,okTxt='Guardar'){return new Promise(res=>{const D=$('#dlg'),okb=$('#dlg-ok');
  if(D.open){try{D.close('no')}catch(e){}}
  busyBtn(okb,0);$('#dlg-t').textContent=titulo;$('#dlg-m').textContent='';okb.textContent=okTxt;
- $('#dlg-c').innerHTML=campos.map(c=>`<label>${esc(c.l)}</label>`+(c.op?`<select name="${c.n}">${c.op.map(o=>`<option value="${esc(o[0])}"${String(o[0])===String(c.v)?' selected':''}>${esc(o[1])}</option>`).join('')}</select>`:`<input name="${c.n}" type="${c.t||'text'}" value="${esc(c.v??'')}" ${c.t==='number'?'min="0" step="'+(c.s||1)+'"':''}${c.o?'':' required'}>`)).join('');
+ $('#dlg-c').innerHTML=campos.map(c=>`<label>${esc(c.l)}</label>`+(c.op?`<select name="${c.n}">${c.op.map(o=>`<option value="${esc(o[0])}"${String(o[0])===String(c.v)?' selected':''}>${esc(o[1])}</option>`).join('')}</select>`:(c.t==='textarea'?`<textarea name="${c.n}" rows="${c.rows||3}" ${c.o?'':' required'}>${esc(c.v??'')}</textarea>`:`<input name="${c.n}" type="${c.t||'text'}" value="${esc(c.v??'')}" ${c.t==='number'?'min="0" step="'+(c.s||1)+'"':''}${c.o?'':' required'}>`))).join('');
  let done=false;const finish=v=>{if(done)return;done=true;res(v)};
  D.onclose=()=>{if(D.returnValue!=='ok')return finish(null);finish(Object.fromEntries(new FormData($('#dlg-f'))))};
  D.returnValue='';
@@ -305,7 +318,7 @@ const pName=id=>puLabel(id),actP=()=>adm.puestos.filter(p=>p.activo);
 function fila(txt,act,del,btns){return`<div class="line${act?'':' del'}"><span class="nm">${txt}</span>${act?btns:'<span class="tag">BORRADO</span>'}</div>`}
 function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.classList.toggle('sel',b.dataset.t===admTab));const A=$('#adm');let h='';
  if(admTab==='figuras'){const figPuestos=fid=>{const m=adm.stockByPu||{},ps=Object.keys(m).filter(pu=>(m[pu]||[]).some(s=>String(s[0])===String(fid)));return ps.length?ps.map(puLabel).join(', '):'sin puesto'};
-  h='<p class="hint2">Cada puesto tiene su catálogo: asigna la figura a un puesto (con stock). La misma figura puede estar en varios puestos.</p><button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} € · <span class="tag">${esc(figPuestos(f.id))}</span>`,f.activo,0,
+  h='<p class="hint2">Cada puesto tiene su catálogo: asigna la figura a un puesto (con stock). En Editar puedes poner imagen (URL) y descripción.</p><button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} € · <span class="tag">${esc(figPuestos(f.id))}</span>${f.foto_url?' · 📷':''}${f.descripcion?' · ✎':''}`,f.activo,0,
   `<button class="blk sm" data-a="fig-ed" data-id="${f.id}">Editar</button><button class="blk sm red" data-a="fig-del" data-id="${f.id}">Borrar</button>`)).join('')}
  if(admTab==='puestos'){const nP=adm.puestos.filter(p=>p.activo).length,capP=nP>=3;
   h='<p class="hint2">El PIN se borra al ocultar la pestaña o salir.</p>'+(capP?'<p class="hint2">Demo: máximo 3 puestos</p>':'')+(capP?'':'<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>')+(pines?'' :'<button class="blk blue add" data-a="pin-show">Mostrar PINES</button>');
@@ -356,13 +369,15 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
   const defPu=(fig&&puestosCon.includes(st.ownerStall)?st.ownerStall:null)||puestosCon[0]||st.ownerStall||PO[0][0];
   const curIni=+(((stockByPu[defPu]||[]).find(s=>String(s[0])===String(fig&&fig.id))||[])[1]||0);
   const fp=form(fig?'Editar figura':'Nueva figura',[
-   {l:'Nombre',n:'nombre',v:fig&&fig.nombre},{l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?fig.precio:''},
+   {l:'Nombre',n:'nombre',v:fig&&fig.nombre},
+   {l:'Descripción (opcional)',n:'descripcion',t:'textarea',o:1,rows:3,v:(fig&&fig.descripcion)||''},
+   {l:'Precio (€)',n:'precio',t:'number',s:'0.01',v:fig?fig.precio:''},
    {l:'Coste (€)',n:'coste',t:'number',s:'0.01',v:fig?fig.coste:0},{l:'Color',n:'color_icono',t:'color',v:(fig&&fig.color_icono)||'#7a9cc6'},
    {l:'Puesto (catálogo de este puesto)',n:'puesto',op:PO,v:defPu},{l:'Stock inicial en ese puesto',n:'stock_ini',t:'number',v:curIni},
-   {l:'Foto (enlace Drive, opcional)',n:'foto_url',t:'url',o:1,v:(fig&&fig.foto_url)||''}]);
-  queueMicrotask(()=>{$('#dlg-m').textContent=fig?'Elige un puesto para fijar o añadir stock ahí. No quita la figura de otros puestos.':'Se asigna al puesto elegido; luego puedes añadirla a otro editándola o con Mover stock.'});
+   {l:'Imagen (URL Drive o https, opcional)',n:'foto_url',t:'url',o:1,v:(fig&&fig.foto_url)||''}]);
+  queueMicrotask(()=>{$('#dlg-m').textContent=fig?'Puedes añadir o cambiar imagen y descripción. El puesto solo fija/añade stock ahí.':'Se asigna al puesto elegido; imagen y descripción se ven en el puesto del vendedor.'});
   v=await fp;
-  if(v){const puesto=v.puesto,stockIni=Math.max(0,Math.floor(+v.stock_ini||0));delete v.puesto;delete v.stock_ini;if(!v.foto_url)delete v.foto_url;
+  if(v){const puesto=v.puesto,stockIni=Math.max(0,Math.floor(+v.stock_ini||0));delete v.puesto;delete v.stock_ini;v.descripcion=String(v.descripcion||'').trim().slice(0,240);v.foto_url=String(v.foto_url||'').trim();
    if(!puesto||!PO.some(p=>p[0]===puesto))return alert('Elige un puesto válido.');
    const otros=(stockByPu[puesto]||[]).filter(s=>{const pid=String(s[0]);if(fig&&pid===String(fig.id))return false;const fx=adm.figuras.find(y=>y.id===pid);return fx&&fx.activo});
    if(otros.length>=4)return alert('Demo: máximo 4 productos por puesto.');
@@ -426,5 +441,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=42',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=43',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
