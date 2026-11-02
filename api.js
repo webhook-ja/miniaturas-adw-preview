@@ -23,7 +23,7 @@ const API=(()=>{
  const A={
   puestos(q,d){const pins={},act=d.puestosT.filter(p=>p.activo),nombres={};act.forEach(p=>{nombres[p.id]=p.nombre||p.id});
    d.vendedores.filter(v=>v.activo&&v.pin).forEach(v=>{pins[v.puesto]=v.pin});
-   return{puestos:act.map(p=>p.id).sort(),puestos_nombres:nombres,demo_pins:pins}},
+   return{puestos:act.map(p=>p.id).sort(),puestos_nombres:nombres,puestos_detalle:act.map(p=>({id:p.id,nombre:p.nombre||p.id})),demo_pins:pins}},
   demo_limpiar(q,d){untok(q.token_dueno,'dueno');d.puestosT.forEach(p=>p.activo=0);d.vendedores.forEach(v=>v.activo=false);
    d.productos.forEach(p=>{if(!['F01','F02','F03','F04'].includes(p.id))p.activo=0});d.stock={};d.asignaciones=[];
    return{ok_limpiar:true,puestos_activos:0,vendedores_activos:0,figuras_activas:d.productos.filter(p=>p.activo).length}},

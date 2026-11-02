@@ -20,13 +20,20 @@ function paintLoginPin(){const el=$('#login-pin');if(!el)return;const who=$('#wh
  if(who==='dueno'){el.hidden=false;el.textContent='PIN dueño · 999999';return}
  const pin=st.demoPins&&st.demoPins[who];if(pin){el.hidden=false;el.textContent='PIN · '+pin;return}
  el.hidden=true;el.textContent=''}
-function mergePuestoNames(map){if(!map||typeof map!=='object')return;st.puestoNames=Object.assign(st.puestoNames||{},map);st._puMap=null}
+function mergePuestoNames(map){if(!map||typeof map!=='object')return;st.puestoNames=Object.assign(st.puestoNames||{},map);st._puMap=null;
+ try{QueueDB.set('puestos_nombres',st.puestoNames)}catch(_){}}
 function puLabel(id){const k=String(id??'');
  if(!st._puMap){const m=Object.create(null);if(st.puestoNames)Object.assign(m,st.puestoNames);
   if(adm&&adm.puestos)adm.puestos.forEach(p=>{if(p&&p.id!=null&&p.nombre)m[String(p.id)]=p.nombre});st._puMap=m}
  return st._puMap[k]||k}
-async function loadPuestos(){let ps=await QueueDB.get('puestos');try{const r=await API.puestos();if(r.ok){ps=r.puestos;QueueDB.set('puestos',ps);st.demoPins=r.demo_pins||{};mergePuestoNames(r.puestos_nombres)}}catch(e){}
- $('#who').innerHTML=(ps||[]).map(p=>`<option value="${p}">${esc(puLabel(p))}</option>`).join('')+'<option value="dueno">DUEÑO</option>';
+/** Login selector: «OASIS · P13» when nombre known; bare id otherwise. */
+function puLoginLabel(id){const k=String(id??'');const nm=puLabel(k);return(nm&&nm!==k)?(nm+' · '+k):k}
+async function loadPuestos(){let ps=await QueueDB.get('puestos');
+ try{const cached=await QueueDB.get('puestos_nombres');if(cached)mergePuestoNames(cached)}catch(_){}
+ try{const r=await API.puestos();if(r.ok){ps=r.puestos;QueueDB.set('puestos',ps);st.demoPins=r.demo_pins||{};
+  if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);
+  else if(Array.isArray(r.puestos_detalle))mergePuestoNames(Object.fromEntries(r.puestos_detalle.filter(p=>p&&p.id).map(p=>[p.id,p.nombre||p.id])))}}catch(e){}
+ $('#who').innerHTML=(ps||[]).map(p=>`<option value="${String(p).replace(/"/g,'&quot;')}">${esc(puLoginLabel(p))}</option>`).join('')+'<option value="dueno">DUEÑO</option>';
  paintLoginPin()}
 $('#who').onchange=paintLoginPin;
 $('#be').textContent=API.backend==='mock'?'MOCK · DATOS DE EJEMPLO':'Apps Script';
@@ -55,10 +62,17 @@ async function flushPendingStockAck(){const raw=localStorage.getItem('pending_st
   const r=await API.stockAck(st.ses.token,p.snapshot||[]);if(r&&r.ok)localStorage.removeItem('pending_stock_ack')}catch(_){}}
 async function submitStockAck(){const rows=stockAckRows();const snap=rows.map(r=>({producto:r.id,quedan:r.quedan,nombre:r.nombre}));
  const w=$('#stock-ack-warn');
+ const pending=()=>localStorage.setItem('pending_stock_ack',JSON.stringify({puesto:st.ses.puesto,vid:st.ses.vid,snapshot:snap,ts:Date.now()}));
  if(navigator.onLine){const r=await API.stockAck(st.ses.token,snap).catch(e=>({ok:false,error:e.message||'Sin conexión'}));
-  if(!r||!r.ok){if(r&&tokenMalo(r))return false;if(w){w.hidden=false;w.textContent='No se pudo registrar en historial: '+(r&&(r.error||r.mensaje)||'error')+'. Reintenta.'}return false}
+  if(!r||!r.ok){if(r&&tokenMalo(r))return false;
+   const err=String((r&&(r.error||r.mensaje))||'error');
+   /* Old /exec without stock_ack: still unlock selling; queue for historial after Code.gs paste. */
+   if(err==='ACCION_DESCONOCIDA'){pending();markStockAckLocal();
+    if(w){w.hidden=false;w.textContent='Stock aceptado en este móvil. Para historial del dueño: pega Code.gs (gas-v4i+) en Apps Script → Nueva versión /exec.'}
+    return true}
+   if(w){w.hidden=false;w.textContent='No se pudo registrar en historial: '+err+'. Reintenta.'}return false}
   localStorage.removeItem('pending_stock_ack')}
- else localStorage.setItem('pending_stock_ack',JSON.stringify({puesto:st.ses.puesto,vid:st.ses.vid,snapshot:snap,ts:Date.now()}));
+ else pending();
  markStockAckLocal();return true}
 function ensureStockAckPrompt(force){if(!st.ses||st.ses.rol!=='vendedor')return;
  if(!force&&hasStockAck()){st.stockAcked=true;const g=$('#grid');if(g)g.classList.remove('stock-locked');flushPendingStockAck();return}
@@ -486,5 +500,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=46',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=47',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
