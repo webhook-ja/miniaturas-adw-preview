@@ -16,7 +16,7 @@ const saveSes=s=>{st.ses=s;QueueDB.set('ses',s)};
 /* ---- PIN ---- */
 let pin='';const renderPin=()=>$('#pin-dots').textContent='●'.repeat(pin.length)+'○'.repeat(Math.max(0,6-pin.length));
 st.demoPins={};
-const GAS_INSTR='1) Abre tu hoja → Extensiones → Apps Script\n2) Borra el Code.gs viejo y pega el nuevo (gas-v4k; ya está en el portapapeles del PC si lo copió el agente)\n3) Guarda (Ctrl+S)\n4) Implementar → Administrar implementaciones → lápiz ✏️ de la App web → Versión: Nueva versión → Implementar\n5) Vuelve a Miniaturas, recarga, y el login debe listar vendedores.\nURL /exec NO cambia; solo hay que publicar Nueva versión.';
+const GAS_INSTR='1) Abre tu hoja → Extensiones → Apps Script\n2) Borra el Code.gs viejo y pega el nuevo (gas-v4l; ya está en el portapapeles del PC si lo copió el agente)\n3) Guarda (Ctrl+S)\n4) Implementar → Administrar implementaciones → lápiz ✏️ de la App web → Versión: Nueva versión → Implementar\n5) Vuelve a Miniaturas, recarga: login lista vendedores y product_completar guarda en hoja.\nURL /exec NO cambia; solo hay que publicar Nueva versión.';
 function cacheVendorsLogin(list){if(!Array.isArray(list))return;const clean=list.filter(v=>v&&v.id&&(v.activo==null||v.activo)).map(v=>({id:v.id,nombre:v.nombre,puesto:v.puesto}));
  st.vendors=clean;try{QueueDB.set('vendedores_login',clean)}catch(_){}}
 function vendorsFromAdm(){if(!adm||!Array.isArray(adm.vendedores))return null;
@@ -159,24 +159,51 @@ function paintTileQty(pid){const tile=document.querySelector(`#grid .tile[data-i
 function paintAllTileQtys(){document.querySelectorAll('#grid .tile[data-id]').forEach(t=>paintTileQty(t.dataset.id))}
 /* ---- Puesto (stock local + cola offline) ---- */
 const setStock=arr=>{st.stock=Object.fromEntries((arr||[]).map(s=>[s.producto,s.quedan]));if(st.ses)QueueDB.set('stock_'+st.ses.puesto,st.stock)};
+function pendingProdKey(){return'pending_product_completar'}
+function readPendingProds(){try{const a=JSON.parse(localStorage.getItem(pendingProdKey())||'[]');return Array.isArray(a)?a:[]}catch(_){return[]}}
+function writePendingProds(list){try{localStorage.setItem(pendingProdKey(),JSON.stringify(list||[]))}catch(_){}}
+function queuePendingProd(fig){if(!fig||!fig.id)return;const list=readPendingProds().filter(x=>String(x.id)!==String(fig.id));
+ list.push({id:fig.id,nombre:fig.nombre,descripcion:fig.descripcion||'',foto_url:fig.foto_url||'',ts:Date.now(),puesto:st.ses&&st.ses.puesto});writePendingProds(list)}
+function clearPendingProd(id){writePendingProds(readPendingProds().filter(x=>String(x.id)!==String(id)))}
+function mergeProdPatches(list,patches){const arr=Array.isArray(list)?list.map(p=>({...p})):[];
+ (patches||[]).forEach(patch=>{if(!patch||!patch.id)return;const i=arr.findIndex(x=>String(x.id)===String(patch.id));
+  if(i>=0)arr[i]={...arr[i],nombre:patch.nombre!=null?patch.nombre:arr[i].nombre,descripcion:patch.descripcion!=null?patch.descripcion:arr[i].descripcion,foto_url:patch.foto_url!=null?patch.foto_url:arr[i].foto_url};
+  else arr.push({id:patch.id,nombre:patch.nombre||patch.id,descripcion:patch.descripcion||'',foto_url:patch.foto_url||'',precio:0,color_icono:'#999999'})});
+ return arr}
+function applyProdLocal(out){if(!out||!out.id)return;const i=st.prods.findIndex(x=>String(x.id)===String(out.id));
+ if(i>=0)st.prods[i]={...st.prods[i],...out};else st.prods.push({...out});
+ try{QueueDB.set('prods',st.prods)}catch(_){}
+ if(adm&&Array.isArray(adm.figuras)){const j=adm.figuras.findIndex(x=>String(x.id)===String(out.id));
+  if(j>=0){adm.figuras[j]={...adm.figuras[j],nombre:out.nombre!=null?out.nombre:adm.figuras[j].nombre,descripcion:out.descripcion!=null?out.descripcion:adm.figuras[j].descripcion,foto_url:out.foto_url!=null?out.foto_url:adm.figuras[j].foto_url};
+   if(admTab==='figuras')admPaint()}}
+ if(st.lastEstado&&Array.isArray(st.lastEstado.productos)){st.lastEstado.productos=st.lastEstado.productos.map(row=>{if(String(row[0])!==String(out.id))return row;const n=[...row];if(out.nombre!=null)n[1]=out.nombre;return n});
+  if(st.ses&&st.ses.rol==='dueno')paintOwnerStockList()}
+ renderGrid()}
+async function flushPendingProdCompletar(){const list=readPendingProds();if(!list.length||!st.ses||st.ses.rol!=='vendedor'||!navigator.onLine)return;
+ const left=[];for(const fig of list){try{const r=await API.productCompletar(st.ses.token,{id:fig.id,nombre:fig.nombre,descripcion:fig.descripcion,foto_url:fig.foto_url});
+  if(r&&r.ok){applyProdLocal(r.figura||fig);continue}
+  if(r&&(r.error==='ACCION_DESCONOCIDA'||tokenMalo(r))){left.push(fig);if(r.error!=='ACCION_DESCONOCIDA')return;continue}
+  left.push(fig)}catch(_){left.push(fig)}}
+ writePendingProds(left)}
+function applyCatalogProds(productos){const merged=mergeProdPatches(productos||[],readPendingProds());st.prods=merged;try{QueueDB.set('prods',merged)}catch(_){}return merged}
 async function refreshCatalogQuiet(){if(!st.ses||st.ses.rol!=='vendedor'||!navigator.onLine)return;
  try{const r=await API.catalogo(st.ses.token);if(!r.ok){tokenMalo(r);return}
   if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);else if(r.puesto_nombre)mergePuestoNames({[r.puesto||st.ses.puesto]:r.puesto_nombre});
-  paintStallTitle();st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();
-  if($('#grid').querySelector('.tile')){paintAllTileQtys();renderGrid()}else renderGrid()}catch(_){}}
+  paintStallTitle();applyCatalogProds(r.productos);setStock(r.stock);rebuildPendDelta();
+  if($('#grid').querySelector('.tile')){paintAllTileQtys();renderGrid()}else renderGrid();flushPendingProdCompletar()}catch(_){}}
 async function loadStall(){const P=st.ses.puesto;paintStallTitle();await qAll();rebuildPendDelta();
  const cachedProds=await QueueDB.get('prods'),cachedStock=await QueueDB.get('stock_'+P);
- if(cachedProds&&cachedProds.length)st.prods=cachedProds;
+ if(cachedProds&&cachedProds.length)st.prods=mergeProdPatches(cachedProds,readPendingProds());
  if(cachedStock&&typeof cachedStock==='object')st.stock=cachedStock;
  if(st.prods.length&&Object.keys(st.stock).length){renderGrid();updPend()}
  else{$('#grid').innerHTML='<p class="msg">Cargando catálogo…</p>'}
  try{if(!navigator.onLine)throw Object.assign(new Error('offline'),{red:true});
   const r=await API.catalogo(st.ses.token);if(r.ok){
    if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);else if(r.puesto_nombre)mergePuestoNames({[r.puesto||P]:r.puesto_nombre});
-   paintStallTitle();st.prods=r.productos;QueueDB.set('prods',r.productos);setStock(r.stock);rebuildPendDelta();renderGrid()}
+   paintStallTitle();applyCatalogProds(r.productos);setStock(r.stock);rebuildPendDelta();renderGrid()}
   else tokenMalo(r)}catch(e){
   if(!st.prods.length||!Object.keys(st.stock).length)$('#grid').innerHTML='<p class="msg">Sin catálogo en caché. Conéctate una vez para poder vender sin red.</p>'}
- updPend();ensureStockAckPrompt(false);if(navigator.onLine)sync()}
+ updPend();ensureStockAckPrompt(false);flushPendingProdCompletar();if(navigator.onLine)sync()}
 async function editProdStall(p){if(!st.ses||st.ses.rol!=='vendedor'||!p)return;
  const precio=Number(p.precio);const precioTxt=Number.isFinite(precio)?(Math.round(precio*100)/100)+' €':'—';
  const fp=form('Completar · '+(p.nombre||p.id),[
@@ -188,11 +215,13 @@ async function editProdStall(p){if(!st.ses||st.ses.rol!=='vendedor'||!p)return;
  const fig={id:p.id,nombre:String(v.nombre||'').trim().slice(0,60),descripcion:String(v.descripcion||'').trim().slice(0,240),foto_url:String(v.foto_url||'').trim().slice(0,500)};
  if(!fig.nombre)return alert('Falta el nombre');
  const r=await API.productCompletar(st.ses.token,fig).catch(e=>({ok:false,error:e.message||'Sin conexión'}));
- if(!r||!r.ok){if(r&&tokenMalo(r))return;return alert(ERR[r.error]||r.error||'No se pudo guardar')}
- const out=r.figura||fig;const i=st.prods.findIndex(x=>x.id===p.id);
- if(i>=0)st.prods[i]={...st.prods[i],...out};else st.prods.push(out);
- try{QueueDB.set('prods',st.prods)}catch(_){}
- renderGrid()}
+ if(r&&r.ok){clearPendingProd(fig.id);applyProdLocal(r.figura||fig);return}
+ if(r&&tokenMalo(r))return;
+ const err=String((r&&(r.error||r.mensaje))||'error');
+ /* gas-v4f /exec sin product_completar: aplicar en puesto + cola para sync cuando haya gas-v4l. */
+ if(err==='ACCION_DESCONOCIDA'){queuePendingProd(fig);applyProdLocal(fig);
+  alert('Guardado en este móvil (ficha del puesto). Para que el Dueño lo vea en Figuras: pega Code.gs gas-v4l → Nueva versión /exec.');return}
+ alert(ERR[err]||err||'No se pudo guardar')}
 function bindTileEdit(b,p){const ed=b.querySelector('.tile-ed');if(ed&&!ed._bound){ed._bound=1;ed.onclick=e=>{e.preventDefault();e.stopPropagation();editProdStall(b._prod||p)}}
  if(b._lpBound)return;b._lpBound=1;let tmr=0,sx=0,sy=0;
  const clear=()=>{if(tmr){clearTimeout(tmr);tmr=0}};
@@ -276,7 +305,7 @@ async function purgeOrphanQueue(active){const set=new Set(active||[]);const all=
 function updPend(){const n=pendMineCount();$('#pend').textContent=n?'⏳'+n:'✓';$('#net').textContent=navigator.onLine?'ONLINE':'OFFLINE';$('#net').className='pill '+(navigator.onLine?'on':'off');
  const b=$('#off-banner');if(b)b.hidden=navigator.onLine||!(st.ses&&st.ses.rol==='vendedor')}
  addEventListener('online',()=>{st.fallos=0;clearTimeout(st.bo);updPend();
- if(st.ses&&st.ses.rol==='vendedor'){flushPendingStockAck();refreshCatalogQuiet().finally(()=>sync())}else sync()});
+ if(st.ses&&st.ses.rol==='vendedor'){flushPendingStockAck();flushPendingProdCompletar();refreshCatalogQuiet().finally(()=>sync())}else sync()});
 addEventListener('offline',updPend);setInterval(()=>{if(st.ses&&st.ses.rol==='vendedor'&&pendMineCount())sync()},30000);
 document.addEventListener('visibilitychange',()=>{
  if(document.hidden){borrarPines();return}
@@ -570,10 +599,10 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
  if(!r||!r.ok)return hojaMsg('No se pudo conectar ('+((r&&(r.mensaje||r.error))||'respuesta no válida')+'). Revisa que la implementación tenga acceso «Cualquiera». '+COMO);
  localStorage.setItem('api_url',u);localStorage.setItem('api_hoja',r.hoja||'');hojaPaint();
  const ver=String(r.version||'');const oldApi=ver&&!/^gas-v4[k-z]/i.test(ver)&&ver!=='gas-v4k+';
- hojaMsg('Conectado a: '+(r.hoja||'?')+(ver?' (v '+ver+')':'')+'.'+(oldApi?' ⚠ API antigua: pega Code.gs gas-v4k y publica Nueva versión /exec.':' Entra con el PIN de dueño de esa hoja.'),!oldApi);hojaCambio()});
+ hojaMsg('Conectado a: '+(r.hoja||'?')+(ver?' (v '+ver+')':'')+'.'+(oldApi?' ⚠ API antigua: pega Code.gs gas-v4l y publica Nueva versión /exec.':' Entra con el PIN de dueño de esa hoja.'),!oldApi);hojaCambio()});
 $('#hoja-vaciar').onclick=()=>withBusy($('#hoja-vaciar'),async()=>{const all=await qAll();const n=all.length;if(!n)return hojaMsg('No hay ventas pendientes en este dispositivo.',1);if(!confirm('¿Vaciar '+n+' venta'+(n===1?'':'s')+' pendiente'+(n===1?'':'s')+' de este dispositivo?\nSe perderán y no se enviarán a la hoja.'))return;await qRemove(all.map(e=>e.id));st.pendDelta={};updPend();hojaMsg('Cola vaciada ('+n+'). Ya puedes GUARDAR Y PROBAR o cambiar de hoja.',1)});
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=51',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=52',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='22')return;sessionStorage.setItem('sw_reload','22');location.reload()})}

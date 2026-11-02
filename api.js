@@ -37,11 +37,13 @@ const API=(()=>{
    if(!x){x={id:nid(d.productos,'F',2),activo:1};d.productos.push(x)}
    Object.assign(x,{nombre:String(f.nombre).slice(0,60),precio:+f.precio,coste:+(f.coste||0),color_icono:/^#[0-9a-f]{6}$/i.test(f.color_icono)?f.color_icono:'#999999',foto_url:String(f.foto_url||'').slice(0,500),descripcion:String(f.descripcion||'').slice(0,240)});return{figura:x}},
   product_completar(q,d){const t=untok(q.token,'vendedor');const f=q.figura||q.producto||{};if(!f.id)throw'FALTAN_DATOS';
-   const x=d.productos.find(p=>p.id===f.id&&p.activo);if(!x)throw'PRODUCTO_DESCONOCIDO';
-   if(!(d.stock[t.p]||{})[x.id]&&!stockDe(d,t.p).some(s=>s.producto===x.id))throw'PRODUCTO_NO_EN_PUESTO';
+   const x=d.productos.find(p=>String(p.id)===String(f.id)&&(p.activo||p.activo===1||p.activo===true));if(!x)throw'PRODUCTO_DESCONOCIDO';
+   const enPuesto=Object.prototype.hasOwnProperty.call(d.stock[t.p]||{},x.id)||stockDe(d,t.p).some(s=>String(s.producto)===String(x.id));
+   if(!enPuesto)throw'PRODUCTO_NO_EN_PUESTO';
    if(f.nombre!=null&&String(f.nombre).trim())x.nombre=String(f.nombre).trim().slice(0,60);
    if(f.foto_url!=null)x.foto_url=String(f.foto_url).trim().slice(0,500);
    if(f.descripcion!=null)x.descripcion=String(f.descripcion).trim().slice(0,240);
+   /* Mutación in-place de d.productos; mock() llama save(d) al salir. */
    return{figura:{id:x.id,nombre:x.nombre,precio:x.precio,coste:x.coste,color_icono:x.color_icono,foto_url:x.foto_url||'',descripcion:x.descripcion||'',activo:1}}},
   figura_borrar(q,d){untok(q.token_dueno,'dueno');const x=d.productos.find(p=>p.id===q.id);if(!x)throw'PRODUCTO_DESCONOCIDO';x.activo=0;return{id:x.id,activo:0}},
   puesto_guardar(q,d){untok(q.token_dueno,'dueno');const p=q.puesto||{};if(!p.nombre)throw'FALTAN_DATOS';let x=p.id&&d.puestosT.find(y=>y.id===p.id);
