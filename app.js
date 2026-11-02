@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s);const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const st={ses:null,prods:[],stock:{},pendDelta:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null,qMem:null,ownerAt:0,stockAcked:false};
+const st={ses:null,prods:[],stock:{},pendDelta:{},prodNames:{},ownerStall:null,undo:null,syncing:false,fallos:0,bo:null,qMem:null,ownerAt:0,stockAcked:false};
 function busyBtn(el,on){if(!el)return;if(on){if(!el.dataset.label)el.dataset.label=el.textContent;el.classList.add('busy');el.disabled=true;el.setAttribute('aria-busy','true')}
  else{el.classList.remove('busy');el.disabled=false;el.removeAttribute('aria-busy');if(el.dataset.label!=null){el.textContent=el.dataset.label;delete el.dataset.label}}}
 async function withBusy(el,fn){busyBtn(el,1);try{return await fn()}finally{busyBtn(el,0)}}
@@ -16,7 +16,7 @@ const saveSes=s=>{st.ses=s;QueueDB.set('ses',s)};
 /* ---- PIN ---- */
 let pin='';const renderPin=()=>$('#pin-dots').textContent='●'.repeat(pin.length)+'○'.repeat(Math.max(0,6-pin.length));
 st.demoPins={};
-const GAS_INSTR='1) Abre tu hoja → Extensiones → Apps Script\n2) Borra el Code.gs viejo y pega el nuevo (gas-v4l; ya está en el portapapeles del PC si lo copió el agente)\n3) Guarda (Ctrl+S)\n4) Implementar → Administrar implementaciones → lápiz ✏️ de la App web → Versión: Nueva versión → Implementar\n5) Vuelve a Miniaturas, recarga: login lista vendedores y product_completar guarda en hoja.\nURL /exec NO cambia; solo hay que publicar Nueva versión.';
+const GAS_INSTR='1) Abre tu hoja → Extensiones → Apps Script\n2) Borra el Code.gs viejo y pega el nuevo (gas-v4m; ya está en el portapapeles del PC si lo copió el agente)\n3) Guarda (Ctrl+S)\n4) Implementar → Administrar implementaciones → lápiz ✏️ de la App web → Versión: Nueva versión → Implementar\n5) Vuelve a Miniaturas, recarga: login lista vendedores y product_completar guarda el nombre en store/hoja.\nURL /exec NO cambia; solo hay que publicar Nueva versión.';
 function cacheVendorsLogin(list){if(!Array.isArray(list))return;const clean=list.filter(v=>v&&v.id&&(v.activo==null||v.activo)).map(v=>({id:v.id,nombre:v.nombre,puesto:v.puesto}));
  st.vendors=clean;try{QueueDB.set('vendedores_login',clean)}catch(_){}}
 function vendorsFromAdm(){if(!adm||!Array.isArray(adm.vendedores))return null;
@@ -100,7 +100,7 @@ function markStockAckLocal(){const k=stockAckKey();if(!k)return;sessionStorage.s
  const D=$('#dlg-stock-ack');if(D&&D.open)try{D.close()}catch(_){}
  const w=$('#stock-ack-warn');if(w)w.hidden=true;const g=$('#grid');if(g)g.classList.remove('stock-locked')}
 function requireStockAck(){if(st.ses&&st.ses.rol==='vendedor'&&!st.stockAcked){const w=$('#stock-ack-warn');if(w){w.hidden=false;w.textContent='Debes aceptar el stock para poder vender.'}ensureStockAckPrompt(true);return false}return true}
-function stockAckRows(){rebuildPendDelta();return(st.prods||[]).filter(p=>p.id in st.stock).map(p=>{const q=qtyOf(p.id);return{id:p.id,nombre:p.nombre,quedan:q,precio:p.precio}}).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es'))}
+function stockAckRows(){rebuildPendDelta();return(st.prods||[]).filter(p=>Object.prototype.hasOwnProperty.call(st.stock,String(p.id))||p.id in st.stock).map(p=>{const q=qtyOf(p.id);return{id:p.id,nombre:prodLabel(p.id)||p.nombre,quedan:q,precio:p.precio}}).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es'))}
 async function flushPendingStockAck(){const raw=localStorage.getItem('pending_stock_ack');if(!raw||!st.ses||st.ses.rol!=='vendedor'||!navigator.onLine)return;
  try{const p=JSON.parse(raw);if(p.puesto&&p.puesto!==st.ses.puesto)return;
   const r=await API.stockAck(st.ses.token,p.snapshot||[]);if(r&&r.ok)localStorage.removeItem('pending_stock_ack')}catch(_){}}
@@ -151,14 +151,25 @@ async function qAdd(e){if(!st.qMem)st.qMem=await QueueDB.all();if(!st.qMem.some(
 async function qRemove(ids){const set=new Set(ids||[]);if(st.qMem)st.qMem=st.qMem.filter(e=>!set.has(e.id));if(ids&&ids.length)await QueueDB.remove(ids)}
 function rebuildPendDelta(){const m={};if(!st.ses){st.pendDelta=m;return m}
  (st.qMem||[]).filter(e=>e._puesto===st.ses.puesto).forEach(e=>{m[e.producto]=(m[e.producto]||0)+e.cantidad});st.pendDelta=m;return m}
-function qtyOf(pid){return(st.stock[pid]||0)+(st.pendDelta[pid]||0)}
-function paintTileQty(pid){const tile=document.querySelector(`#grid .tile[data-id="${pid}"]`);if(!tile)return;
+function qtyOf(pid){const k=String(pid);return(st.stock[k]||st.stock[pid]||0)+(st.pendDelta[k]||st.pendDelta[pid]||0)}
+function paintTileQty(pid){const tile=document.querySelector(`#grid .tile[data-id="${CSS.escape?CSS.escape(String(pid)):String(pid)}"]`);if(!tile)return;
  const s=qtyOf(pid),el=tile.querySelector('.st');if(el)el.textContent=String(s);
  const lab=tile.querySelector('.st-lab');if(lab)lab.textContent=s<=0?'Sin stock':'Quedan';
  tile.classList.toggle('low',s<=thr());tile.classList.toggle('zero',s<=0);tile.dataset.s=String(s)}
 function paintAllTileQtys(){document.querySelectorAll('#grid .tile[data-id]').forEach(t=>paintTileQty(t.dataset.id))}
 /* ---- Puesto (stock local + cola offline) ---- */
-const setStock=arr=>{st.stock=Object.fromEntries((arr||[]).map(s=>[s.producto,s.quedan]));if(st.ses)QueueDB.set('stock_'+st.ses.puesto,st.stock)};
+const setStock=arr=>{st.stock=Object.fromEntries((arr||[]).map(s=>[String(s.producto),s.quedan]));if(st.ses)QueueDB.set('stock_'+st.ses.puesto,st.stock)};
+function rememberProdNames(list){if(!st.prodNames)st.prodNames={};(list||[]).forEach(p=>{if(!p||p.id==null)return;if(p.nombre!=null&&String(p.nombre).trim())st.prodNames[String(p.id)]=String(p.nombre)})}
+function prodLabel(id){const k=String(id??'');if(!k)return'';
+ if(st.prodNames&&st.prodNames[k])return st.prodNames[k];
+ const fromProds=(st.prods||[]).find(x=>String(x.id)===k);if(fromProds&&fromProds.nombre)return fromProds.nombre;
+ if(adm&&Array.isArray(adm.figuras)){const f=adm.figuras.find(x=>String(x.id)===k);if(f&&f.nombre)return f.nombre}
+ if(st.lastEstado&&Array.isArray(st.lastEstado.productos)){const row=st.lastEstado.productos.find(p=>String(p[0])===k);if(row&&row[1])return row[1]}
+ return k}
+function productNamesMap(productos){const m={};(productos||[]).forEach(p=>{const id=String(Array.isArray(p)?p[0]:p.id);if(!id)return;
+  const nom=Array.isArray(p)?p[1]:p.nombre;m[id]={nombre:(nom!=null&&String(nom).trim())?String(nom):(st.prodNames&&st.prodNames[id])||id,activo:Array.isArray(p)?(p[4]??1):(p.activo??1)}});
+ Object.keys(st.prodNames||{}).forEach(id=>{if(!m[id])m[id]={nombre:st.prodNames[id],activo:1};else if(st.prodNames[id])m[id].nombre=st.prodNames[id]});
+ return m}
 function pendingProdKey(){return'pending_product_completar'}
 function readPendingProds(){try{const a=JSON.parse(localStorage.getItem(pendingProdKey())||'[]');return Array.isArray(a)?a:[]}catch(_){return[]}}
 function writePendingProds(list){try{localStorage.setItem(pendingProdKey(),JSON.stringify(list||[]))}catch(_){}}
@@ -169,15 +180,38 @@ function mergeProdPatches(list,patches){const arr=Array.isArray(list)?list.map(p
  (patches||[]).forEach(patch=>{if(!patch||!patch.id)return;const i=arr.findIndex(x=>String(x.id)===String(patch.id));
   if(i>=0)arr[i]={...arr[i],nombre:patch.nombre!=null?patch.nombre:arr[i].nombre,descripcion:patch.descripcion!=null?patch.descripcion:arr[i].descripcion,foto_url:patch.foto_url!=null?patch.foto_url:arr[i].foto_url};
   else arr.push({id:patch.id,nombre:patch.nombre||patch.id,descripcion:patch.descripcion||'',foto_url:patch.foto_url||'',precio:0,color_icono:'#999999'})});
- return arr}
-function applyProdLocal(out){if(!out||!out.id)return;const i=st.prods.findIndex(x=>String(x.id)===String(out.id));
- if(i>=0)st.prods[i]={...st.prods[i],...out};else st.prods.push({...out});
+ rememberProdNames(arr);return arr}
+function rebuildOwnerNameViews(){if(!st.lastEstado)return;
+ const names=productNamesMap(st.lastEstado.productos);
+ if(st.ses&&st.ses.rol==='dueno'){paintOwnerStockList();
+  if(st.lastHoy){paintPuestoResumen(st.lastEstado,st.lastHoy,names);paintAvisos(st.lastEstado,st.lastHoy,names);
+   const tp={};(st.lastHoy.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
+   const nm=k=>prodLabel(k);
+   const h=st.lastHoy;const salesHtml=`<table><tr><th>Hoy ${h.fecha}</th><th>Uds</th><th>€</th><th>Benef.</th></tr><tr><td>TOTAL</td><td class="n">${h.totales.unidades}</td><td class="n">${h.totales.importe}</td><td class="n">${h.totales.beneficio}</td></tr></table>`+
+    '<table><tr><th>Puesto</th><th>Producto</th><th>Uds</th></tr>'+Object.entries(tp).filter(x=>x[1]).map(([k,u])=>{const[pu,pr]=k.split('|');return`<tr><td>${esc(puLabel(pu))}</td><td>${esc(nm(pr))}</td><td class="n">${u}</td></tr>`}).join('')+'</table>'+
+    '<table><tr><th>Puesto · vendedor</th><th>Uds</th><th>€</th></tr>'+(h.por_vendedor||[]).map(x=>`<tr><td>${esc(puLabel(x.puesto))} · ${esc(x.vendedor)}</td><td class="n">${x.unidades}</td><td class="n">${x.importe}</td></tr>`).join('')+'</table>';
+   st._salesHtml=salesHtml;const salesEl=$('#sales'),vp=$('.owner-panel[data-panel="ventas"]'),ventasOpen=vp&&!vp.hidden;
+   if(ventasOpen&&salesEl){salesEl.innerHTML=salesHtml;salesEl.dataset.ready='1'}else if(salesEl)salesEl.dataset.ready=''}}}
+function applyProdLocal(out){if(!out||!out.id)return;const id=String(out.id);const nombre=out.nombre!=null?String(out.nombre):'';
+ if(nombre){st.prodNames=st.prodNames||{};st.prodNames[id]=nombre;try{QueueDB.set('prod_names',st.prodNames)}catch(_){}}
+ const i=st.prods.findIndex(x=>String(x.id)===id);
+ if(i>=0)st.prods[i]={...st.prods[i],...out,id:st.prods[i].id};else st.prods.push({...out});
  try{QueueDB.set('prods',st.prods)}catch(_){}
- if(adm&&Array.isArray(adm.figuras)){const j=adm.figuras.findIndex(x=>String(x.id)===String(out.id));
-  if(j>=0){adm.figuras[j]={...adm.figuras[j],nombre:out.nombre!=null?out.nombre:adm.figuras[j].nombre,descripcion:out.descripcion!=null?out.descripcion:adm.figuras[j].descripcion,foto_url:out.foto_url!=null?out.foto_url:adm.figuras[j].foto_url};
-   if(admTab==='figuras')admPaint()}}
- if(st.lastEstado&&Array.isArray(st.lastEstado.productos)){st.lastEstado.productos=st.lastEstado.productos.map(row=>{if(String(row[0])!==String(out.id))return row;const n=[...row];if(out.nombre!=null)n[1]=out.nombre;return n});
-  if(st.ses&&st.ses.rol==='dueno')paintOwnerStockList()}
+ if(adm&&Array.isArray(adm.figuras)){const j=adm.figuras.findIndex(x=>String(x.id)===id);
+  if(j>=0)adm.figuras[j]={...adm.figuras[j],nombre:out.nombre!=null?out.nombre:adm.figuras[j].nombre,descripcion:out.descripcion!=null?out.descripcion:adm.figuras[j].descripcion,foto_url:out.foto_url!=null?out.foto_url:adm.figuras[j].foto_url};
+  else if(out.nombre)adm.figuras.push({id,nombre:out.nombre,descripcion:out.descripcion||'',foto_url:out.foto_url||'',precio:out.precio||0,coste:out.coste||0,color_icono:out.color_icono||'#999',activo:1});
+  if(admTab==='figuras'||admTab==='stock')admPaint()}
+ if(st.lastEstado&&Array.isArray(st.lastEstado.productos)){
+  let hit=false;st.lastEstado.productos=st.lastEstado.productos.map(row=>{if(String(row[0])!==id)return row;hit=true;const n=[...row];if(out.nombre!=null)n[1]=out.nombre;return n});
+  if(!hit&&out.nombre!=null)st.lastEstado.productos.push([id,out.nombre,out.precio||0,out.coste||0,1])}
+ Object.keys(stockPend).forEach(k=>{const x=stockPend[k];if(x&&String(x.producto)===id&&out.nombre!=null)x.nombre=out.nombre});
+ document.querySelectorAll('#stock-list .line[data-producto]').forEach(row=>{if(String(row.dataset.producto)!==id)return;
+  const nom=out.nombre!=null?out.nombre:row.dataset.nombre;row.dataset.nombre=nom;
+  paintStockRow(row,nom,+(row.dataset.activo||1),+(row.dataset.ini||0),+(row.dataset.vend||0))});
+ if(st.undo&&String(st.undo.producto)===id&&out.nombre!=null){const ut=$('#undo-txt');if(ut)ut.textContent='−1 '+out.nombre}
+ const ack=$('#dlg-stock-ack');if(ack&&ack.open&&!hasStockAck()){const list=$('#stock-ack-list');if(list){const rows=stockAckRows();
+  list.innerHTML=rows.length?('<table><tr><th>Producto</th><th>Quedan</th><th>€</th></tr>'+rows.map(r=>`<tr><td>${esc(r.nombre)}</td><td class="n">${r.quedan}</td><td class="n">${r.precio!=null?r.precio:'—'}</td></tr>`).join('')+'</table>'):list.innerHTML}}
+ rebuildOwnerNameViews();
  renderGrid()}
 async function flushPendingProdCompletar(){const list=readPendingProds();if(!list.length||!st.ses||st.ses.rol!=='vendedor'||!navigator.onLine)return;
  const left=[];for(const fig of list){try{const r=await API.productCompletar(st.ses.token,{id:fig.id,nombre:fig.nombre,descripcion:fig.descripcion,foto_url:fig.foto_url});
@@ -218,9 +252,9 @@ async function editProdStall(p){if(!st.ses||st.ses.rol!=='vendedor'||!p)return;
  if(r&&r.ok){clearPendingProd(fig.id);applyProdLocal(r.figura||fig);return}
  if(r&&tokenMalo(r))return;
  const err=String((r&&(r.error||r.mensaje))||'error');
- /* gas-v4f /exec sin product_completar: aplicar en puesto + cola para sync cuando haya gas-v4l. */
+ /* gas-v4f /exec sin product_completar: aplicar en puesto + cola para sync cuando haya gas-v4m. */
  if(err==='ACCION_DESCONOCIDA'){queuePendingProd(fig);applyProdLocal(fig);
-  alert('Guardado en este móvil (ficha del puesto). Para que el Dueño lo vea en Figuras: pega Code.gs gas-v4l → Nueva versión /exec.');return}
+  alert('Guardado en este móvil (ficha del puesto). Para que el Dueño lo vea en Figuras: pega Code.gs gas-v4m → Nueva versión /exec.');return}
  alert(ERR[err]||err||'No se pudo guardar')}
 function bindTileEdit(b,p){const ed=b.querySelector('.tile-ed');if(ed&&!ed._bound){ed._bound=1;ed.onclick=e=>{e.preventDefault();e.stopPropagation();editProdStall(b._prod||p)}}
  if(b._lpBound)return;b._lpBound=1;let tmr=0,sx=0,sy=0;
@@ -231,10 +265,10 @@ function bindTileEdit(b,p){const ed=b.querySelector('.tile-ed');if(ed&&!ed._boun
  b.addEventListener('pointerup',clear);b.addEventListener('pointercancel',clear);b.addEventListener('pointerleave',clear)}
 function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelta();const g=$('#grid'),keep=new Map();
  [...g.querySelectorAll('.tile[data-id]')].forEach(t=>keep.set(t.dataset.id,t));
- const want=st.prods.filter(p=>p.id in st.stock);const seen=new Set();
- want.forEach(p=>{seen.add(p.id);let b=keep.get(p.id);const s=qtyOf(p.id);const img=API.driveImg(p.foto_url);const desc=String(p.descripcion||'').trim();
+ const want=st.prods.filter(p=>Object.prototype.hasOwnProperty.call(st.stock,String(p.id))||p.id in st.stock);const seen=new Set();
+ want.forEach(p=>{const pid=String(p.id);seen.add(pid);let b=keep.get(pid)||keep.get(p.id);const s=qtyOf(pid);const img=API.driveImg(p.foto_url);const desc=String(p.descripcion||'').trim();
   const precio=Number(p.precio);const precioTxt=Number.isFinite(precio)?(Math.round(precio*100)/100)+' €':'';
-  if(!b){b=document.createElement('div');b.dataset.id=p.id;b.style.setProperty('--c',p.color_icono);
+  if(!b){b=document.createElement('div');b.dataset.id=pid;b.style.setProperty('--c',p.color_icono);
    b.innerHTML=`<button type="button" class="tile-ed" aria-label="Editar ficha" title="Completar ficha">✎</button><div class="ic-wrap"></div><div class="nm"></div><div class="price" hidden></div><div class="desc" hidden></div><div class="st-wrap"><span class="st-lab">Quedan</span><div class="st"></div></div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
    b.querySelector('.tile-minus').onclick=e=>{e.stopPropagation();sell(b._prod||p)};
    b.querySelector('.tile-plus').onclick=e=>{e.stopPropagation();restock(b._prod||p)};
@@ -245,7 +279,7 @@ function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelt
    if(img){if(!cur||cur.tagName!=='IMG'||cur.getAttribute('src')!==img){wrap.innerHTML=`<img class="ic" alt="" loading="lazy" decoding="async" width="72" height="72" src="${img}">`;const im=wrap.querySelector('img');if(im)im.onerror=()=>{wrap.innerHTML=`<span class="ic" style="--ic:${p.color_icono||'#999'}"></span>`}}
    }else if(!cur||cur.tagName==='IMG'){wrap.innerHTML=`<span class="ic" style="--ic:${p.color_icono||'#999'}"></span>`}
    else cur.style.setProperty('--ic',p.color_icono||'#999')}
-  const nm=b.querySelector('.nm');if(nm)nm.textContent=p.nombre;
+  const nm=b.querySelector('.nm');if(nm)nm.textContent=prodLabel(pid)||p.nombre;
   const pr=b.querySelector('.price');if(pr){if(precioTxt){pr.hidden=false;pr.textContent=precioTxt}else{pr.hidden=true;pr.textContent=''}}
   const de=b.querySelector('.desc');if(de){if(desc){de.hidden=false;de.textContent=desc}else{de.hidden=true;de.textContent=''}}
   b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'')+(img?' has-img':'');b.dataset.s=String(s);
@@ -277,14 +311,14 @@ async function askRestockJustify(nombre){
   const tipo=v.tipo==='devolucion'?'devolucion':'error',detalle=String(v.detalle||'').trim();
   if(detalle.length<3){alert('Escribe el detalle (mín. 3 caracteres).');continue}
   return{justificacion_tipo:tipo,justificacion:detalle.slice(0,200)}}}
-async function restock(p){if(!requireStockAck())return;const j=await askRestockJustify(p.nombre);if(!j)return;
+async function restock(p){if(!requireStockAck())return;const j=await askRestockJustify(prodLabel(p.id)||p.nombre);if(!j)return;
  pop(true);const sale=await lastSaleOf(p.id);const e={...(sale?{...evento(p.id,1),ref:sale.id}:evento(p.id,1)),...j};
  st.pendDelta[p.id]=(st.pendDelta[p.id]||0)+1;paintTileQty(p.id);
  if(sale&&st.undo&&st.undo.id===sale.id){st.undo=null;$('#undo').hidden=true}
  updPend();qAdd(e).then(()=>sync())}
-function setUndo(e,p){st.undo=e;$('#undo-txt').textContent='−1 '+p.nombre;$('#undo').hidden=false;clearTimeout(st.ut);st.ut=setTimeout(()=>{$('#undo').hidden=true;st.undo=null},15000)}
-$('#undo-btn').onclick=async()=>{if(!requireStockAck())return;const v=st.undo;if(!v)return;const prod=st.prods.find(x=>x.id===v.producto)||{nombre:v.producto};
- const j=await askRestockJustify(prod.nombre);if(!j)return;st.undo=null;$('#undo').hidden=true;pop(true);
+function setUndo(e,p){st.undo=e;$('#undo-txt').textContent='−1 '+(prodLabel(p.id)||p.nombre);$('#undo').hidden=false;clearTimeout(st.ut);st.ut=setTimeout(()=>{$('#undo').hidden=true;st.undo=null},15000)}
+$('#undo-btn').onclick=async()=>{if(!requireStockAck())return;const v=st.undo;if(!v)return;const prod=st.prods.find(x=>String(x.id)===String(v.producto))||{nombre:prodLabel(v.producto)};
+ const j=await askRestockJustify(prodLabel(v.producto)||prod.nombre);if(!j)return;st.undo=null;$('#undo').hidden=true;pop(true);
  const e={...evento(v.producto,1),ref:v.id,...j};st.pendDelta[v.producto]=(st.pendDelta[v.producto]||0)+1;paintTileQty(v.producto);updPend();qAdd(e).then(()=>sync())};
 /* ---- Sincronización: lotes ≤200, idempotente, backoff exponencial 2 s → 5 min ---- */
 function backoff(){st.fallos++;const ms=Math.min(2000*2**(st.fallos-1),300000);clearTimeout(st.bo);st.bo=setTimeout(sync,ms);return ms}
@@ -336,11 +370,11 @@ function paintStallTabs(puestos,sel){
  addTab('*','Todos');puestos.forEach(p=>addTab(p,puLabel(p)));
 }
 function paintOwnerStockList(){const e=st.lastEstado,L=$('#stock-list');if(!e||!L){loadOwner(true);return}
- const names=Object.fromEntries((e.productos||[]).map(p=>[p[0],{nombre:p[1],activo:p[4]}]));L.innerHTML='';
+ const names=productNamesMap(e.productos);L.innerHTML='';
  const showPu=st.ownerStall==='*'?(e.puestos||[]):[st.ownerStall],frag=document.createDocumentFragment();
- showPu.forEach(pu=>{(e.stock[pu]||[]).forEach(([producto,ini,vend])=>{const p=names[producto]||{nombre:producto},d=document.createElement('div');d.className='line';d.dataset.puesto=pu;d.dataset.producto=producto;d.dataset.nombre=p.nombre||producto;d.dataset.activo=String(p.activo??1);
+ showPu.forEach(pu=>{(e.stock[pu]||[]).forEach(([producto,ini,vend])=>{const pid=String(producto);const p=names[pid]||{nombre:prodLabel(pid)};const d=document.createElement('div');d.className='line';d.dataset.puesto=pu;d.dataset.producto=pid;d.dataset.nombre=p.nombre||pid;d.dataset.activo=String(p.activo??1);
   d.innerHTML=`<span class="nm"></span><button type="button" class="blk red" aria-label="Menos">−</button><span class="n">${ini}</span><button type="button" class="blk green" aria-label="Más">+</button>`;
-  paintStockRow(d,p.nombre,p.activo,ini,vend);frag.append(d)})});
+  paintStockRow(d,p.nombre||pid,p.activo,ini,vend);frag.append(d)})});
  if(frag.childNodes.length)L.append(frag);else L.innerHTML='<p class="msg">Sin stock en este puesto. Usa + en otro puesto o Mover stock.</p>'}
 async function ensurePines(){if(pines!==null)return pines;if(!st.ses||st.ses.rol!=='dueno')return null;
  const r=await API.pinesVer(st.ses.token_dueno).catch(()=>({ok:false}));if(!r.ok){if(tokenMalo(r))return null;return null}
@@ -388,7 +422,8 @@ async function loadOwner(skipFlush){if(!st.ses||st.ses.rol!=='dueno')return;if(!
  paintStallTabs(e.puestos,st.ownerStall);paintOwnerStockList();
  if(adm&&admTab==='figuras')admPaint();
  const h=await hP;if(gen!==ownerGen)return;if(!h.ok)throw new Error(h.error);st.lastHoy=h;const tp={};(h.ventas||[]).forEach(([id,fh,ve,pu,pr,c])=>{const k=pu+'|'+pr;tp[k]=(tp[k]||0)-c});
- const names=Object.fromEntries(e.productos.map(p=>[p[0],{nombre:p[1],activo:p[4]}])),nm=k=>(names[k]||{nombre:k}).nombre;
+ rememberProdNames((e.productos||[]).map(p=>({id:p[0],nombre:p[1]})));
+ const names=productNamesMap(e.productos),nm=k=>prodLabel(k);
  paintBarSum({totales:h.totales,por_vendedor:h.por_vendedor});
  paintPuestoResumen(e,h,names);paintAvisos(e,h,names);
  const salesHtml=`<table><tr><th>Hoy ${h.fecha}</th><th>Uds</th><th>€</th><th>Benef.</th></tr><tr><td>TOTAL</td><td class="n">${h.totales.unidades}</td><td class="n">${h.totales.importe}</td><td class="n">${h.totales.beneficio}</td></tr></table>`+
@@ -408,10 +443,10 @@ function paintPuestoResumen(e,h,names){const box=$('#puesto-resumen');if(!box)re
   return`<div class="res-card"><div class="res-t">${esc(puLabel(pu))}</div><div class="res-g"><span><b>${piezas}</b> piezas</span><span><b>${fichas}</b> fichas</span><span><b>${s.ventas||0}</b> ventas</span><span><b>${Number(s.importe||0).toFixed(0)}</b> €</span></div></div>`}).join('')}
 function paintAvisos(e,h,names){const box=$('#avisos-list'),badge=$('#avisos-n');if(!box)return;const items=[];
  const um=thr();(e.puestos||[]).forEach(pu=>{(e.stock[pu]||[]).forEach(([pr,ini,vend])=>{const q=Math.max(0,(+ini||0)-(+vend||0));if(q>um)return;
-  const nm=(names&&names[pr]&&names[pr].nombre)||pr;items.push({t:'stock',txt:`Stock bajo · ${puLabel(pu)} · ${nm}: quedan ${q} (≤${um})`})})});
+  const nm=prodLabel(pr);items.push({t:'stock',txt:`Stock bajo · ${puLabel(pu)} · ${nm}: quedan ${q} (≤${um})`})})});
  (h.ventas||[]).forEach(row=>{const c=+row[5];if(c!==1)return;const tipo=row[8]||'',det=row[9]||'';if(!tipo&&!det)return;
   const label=tipo==='devolucion'?'Devolución':(tipo==='error'?'Corrección':'Ajuste +1');
-  const nm=(names&&names[row[4]]&&names[row[4]].nombre)||row[4];
+  const nm=prodLabel(row[4]);
   items.push({t:'fix',txt:`${label} · ${puLabel(row[3])} · ${nm}${det?' · '+det:''}`})});
  if(!items.length){box.innerHTML='<p class="hint2" style="margin:0">Sin avisos ahora. (Apertura/cierre de jornada: aún no implementado.)</p>';if(badge){badge.hidden=true;badge.textContent='0'}return}
  box.innerHTML=items.slice(0,40).map(i=>`<div class="aviso ${i.t}">${esc(i.txt)}</div>`).join('');
@@ -457,7 +492,7 @@ async function verPines(){await ensurePines();if(adm&&admTab==='puestos')admPain
 /* ---- Gestión (CRUD dueño, borrado lógico). Datos solo en memoria. ---- */
 var adm=null,admTab='figuras';
 async function admCall(accion,extra){const r=await API.admin(accion,st.ses.token_dueno,extra).catch(()=>({ok:false,error:'Sin conexión'}));if(!r.ok&&tokenMalo(r))throw 0;return r}
-async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;st._puMap=null;
+async function admLoad(){const r=await admCall('admin_listar',{});if(!r.ok){$('#adm').innerHTML='<p class="msg">'+esc(r.error)+'</p>';return}adm=r;st._puMap=null;rememberProdNames(adm.figuras);
  if(adm.puestos)mergePuestoNames(Object.fromEntries(adm.puestos.map(p=>[p.id,p.nombre])));
  /* Caché pública-segura (id/nombre/puesto) para login aunque /exec sea gas-v4f sin puestos.vendedores. */
  {const fromAdm=vendorsFromAdm();if(fromAdm&&fromAdm.length)cacheVendorsLogin(fromAdm)}
@@ -476,7 +511,7 @@ const pName=id=>puLabel(id),actP=()=>adm.puestos.filter(p=>p.activo);
 function fila(txt,act,del,btns){return`<div class="line${act?'':' del'}"><span class="nm">${txt}</span>${act?btns:'<span class="tag">BORRADO</span>'}</div>`}
 function admPaint(){document.querySelectorAll('#adm-tabs .blk').forEach(b=>b.classList.toggle('sel',b.dataset.t===admTab));const A=$('#adm');let h='';
  if(admTab==='figuras'){const figPuestos=fid=>{const m=adm.stockByPu||{},ps=Object.keys(m).filter(pu=>(m[pu]||[]).some(s=>String(s[0])===String(fid)));return ps.length?ps.map(puLabel).join(', '):'sin puesto'};
-  h='<p class="hint2">Cada puesto tiene su catálogo: asigna la figura a un puesto (con stock). En Editar puedes poner imagen (URL) y descripción.</p><button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(f.nombre)} · ${f.precio} € · <span class="tag">${esc(figPuestos(f.id))}</span>${f.foto_url?' · 📷':''}${f.descripcion?' · ✎':''}`,f.activo,0,
+  h='<p class="hint2">Cada puesto tiene su catálogo: asigna la figura a un puesto (con stock). En Editar puedes poner imagen (URL) y descripción.</p><button class="blk green add" data-a="fig-new">+ Nueva figura</button>'+adm.figuras.map(f=>fila(`<span class="sw" style="--ic:${esc(f.color_icono)};display:inline-block;vertical-align:middle"></span> ${esc(prodLabel(f.id)||f.nombre)} · ${f.precio} € · <span class="tag">${esc(figPuestos(f.id))}</span>${f.foto_url?' · 📷':''}${f.descripcion?' · ✎':''}`,f.activo,0,
   `<button class="blk sm" data-a="fig-ed" data-id="${f.id}">Editar</button><button class="blk sm red" data-a="fig-del" data-id="${f.id}">Borrar</button>`)).join('')}
  if(admTab==='puestos'){const nP=adm.puestos.filter(p=>p.activo).length,capP=nP>=3;
   h='<p class="hint2">El PIN se borra al ocultar la pestaña o salir.</p>'+(capP?'<p class="hint2">Demo: máximo 3 puestos</p>':'')+(capP?'':'<button class="blk green add plus" data-a="pue-alta" aria-label="Añadir puesto" title="Añadir puesto">+</button>')+(pines?'' :'<button class="blk blue add" data-a="pin-show">Mostrar PINES</button>');
@@ -540,7 +575,7 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
    const otros=(stockByPu[puesto]||[]).filter(s=>{const pid=String(s[0]);if(fig&&pid===String(fig.id))return false;const fx=adm.figuras.find(y=>y.id===pid);return fx&&fx.activo});
    if(otros.length>=4)return alert('Demo: máximo 4 productos por puesto.');
    busyBtn(b,1);try{r=await admCall('figura_guardar',{figura:{...(fig?{id:fig.id}:{}),...v}});
-    if(r&&r.ok&&r.figura&&r.figura.id){const q=await API.stockGuardar(st.ses.token_dueno,puesto,[{producto:r.figura.id,cantidad_inicial:stockIni}]).catch(()=>({ok:false,error:'Sin conexión'}));
+    if(r&&r.ok&&r.figura&&r.figura.id){applyProdLocal(r.figura);const q=await API.stockGuardar(st.ses.token_dueno,puesto,[{producto:r.figura.id,cantidad_inicial:stockIni}]).catch(()=>({ok:false,error:'Sin conexión'}));
      if(!q.ok)alert('Figura guardada, pero no se asignó al puesto: '+(q.error||'error'));
      else{adm.stockByPu=adm.stockByPu||{};adm.stockByPu[puesto]=q.stock?q.stock.map(s=>[s.producto,s.cantidad_inicial,s.vendidas,s.quedan]):(adm.stockByPu[puesto]||[])}}}finally{busyBtn(b,0)}}}
  if(a==='pue-alta'){if(adm.puestos.filter(p=>p.activo).length>=3)return alert('Demo: máximo 3 puestos');
@@ -565,8 +600,8 @@ document.getElementById('adm').onclick=async e=>{const b=e.target.closest('[data
  if(a==='stk-mov'){if(PO.length<2)return alert('Necesitas al menos 2 puestos para mover stock.');
   let stockM=st.lastStock||adm.stockByPu||{};
   if(!Object.keys(stockM).length){const estM=await API.estadoDueno(st.ses.token_dueno).catch(()=>({ok:false}));stockM=(estM&&estM.ok&&estM.stock)||{}}
-  const seen={},pr=[];Object.keys(stockM).forEach(pu=>{(stockM[pu]||[]).forEach(s=>{const pid=String(s[0]);if(seen[pid])return;const f=adm.figuras.find(x=>x.id===pid&&x.activo);if(!f)return;seen[pid]=1;
-   const donde=Object.keys(stockM).filter(p=>(stockM[p]||[]).some(x=>String(x[0])===pid));pr.push([f.id,f.nombre+(donde.length?' · '+donde.join(','):'')])})});
+  const seen={},pr=[];Object.keys(stockM).forEach(pu=>{(stockM[pu]||[]).forEach(s=>{const pid=String(s[0]);if(seen[pid])return;const f=adm.figuras.find(x=>String(x.id)===pid&&x.activo);if(!f)return;seen[pid]=1;
+   const donde=Object.keys(stockM).filter(p=>(stockM[p]||[]).some(x=>String(x[0])===pid));pr.push([f.id,(prodLabel(pid)||f.nombre)+(donde.length?' · '+donde.join(','):'')])})});
   if(!pr.length)return alert('Ningún puesto tiene productos asignados. Crea o edita una figura y elige un puesto.');
   const defDesde=st.ownerStall&&PO.some(p=>p[0]===st.ownerStall)?st.ownerStall:PO[0][0];
   const defHasta=PO.find(p=>p[0]!==defDesde);v=await form('Mover stock',[{l:'Figura (puestos que la llevan)',n:'producto',op:pr},{l:'Desde',n:'desde',op:PO,v:defDesde},{l:'Hasta',n:'hasta',op:PO,v:defHasta&&defHasta[0]},{l:'Cantidad',n:'cantidad',t:'number',v:1}],'Mover');
@@ -599,10 +634,12 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
  if(!r||!r.ok)return hojaMsg('No se pudo conectar ('+((r&&(r.mensaje||r.error))||'respuesta no válida')+'). Revisa que la implementación tenga acceso «Cualquiera». '+COMO);
  localStorage.setItem('api_url',u);localStorage.setItem('api_hoja',r.hoja||'');hojaPaint();
  const ver=String(r.version||'');const oldApi=ver&&!/^gas-v4[k-z]/i.test(ver)&&ver!=='gas-v4k+';
- hojaMsg('Conectado a: '+(r.hoja||'?')+(ver?' (v '+ver+')':'')+'.'+(oldApi?' ⚠ API antigua: pega Code.gs gas-v4l y publica Nueva versión /exec.':' Entra con el PIN de dueño de esa hoja.'),!oldApi);hojaCambio()});
+ hojaMsg('Conectado a: '+(r.hoja||'?')+(ver?' (v '+ver+')':'')+'.'+(oldApi?' ⚠ API antigua: pega Code.gs gas-v4m y publica Nueva versión /exec.':' Entra con el PIN de dueño de esa hoja.'),!oldApi);hojaCambio()});
 $('#hoja-vaciar').onclick=()=>withBusy($('#hoja-vaciar'),async()=>{const all=await qAll();const n=all.length;if(!n)return hojaMsg('No hay ventas pendientes en este dispositivo.',1);if(!confirm('¿Vaciar '+n+' venta'+(n===1?'':'s')+' pendiente'+(n===1?'':'s')+' de este dispositivo?\nSe perderán y no se enviarán a la hoja.'))return;await qRemove(all.map(e=>e.id));st.pendDelta={};updPend();hojaMsg('Cola vaciada ('+n+'). Ya puedes GUARDAR Y PROBAR o cambiar de hoja.',1)});
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
-renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=52',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+renderPin();updPend();loadPuestos();
+QueueDB.get('prod_names').then(m=>{if(m&&typeof m==='object')st.prodNames=Object.assign(st.prodNames||{},m)}).catch(()=>{});
+QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=53',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='22')return;sessionStorage.setItem('sw_reload','22');location.reload()})}
