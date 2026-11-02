@@ -45,13 +45,23 @@ function paintStallTitle(){if(!st.ses||st.ses.rol!=='vendedor')return;const el=$
 function stockAckKey(){if(!st.ses||st.ses.rol!=='vendedor')return'';
  return'stock_ack_'+st.ses.puesto+'_'+(st.ses.vid||st.ses.nombre||'x')+'_'+API.hoyMadrid()}
 function hasStockAck(){const k=stockAckKey();return!!(k&&(sessionStorage.getItem(k)==='1'||localStorage.getItem(k)==='1'))}
-function markStockAck(){const k=stockAckKey();if(!k)return;sessionStorage.setItem(k,'1');localStorage.setItem(k,'1');st.stockAcked=true;
+function markStockAckLocal(){const k=stockAckKey();if(!k)return;sessionStorage.setItem(k,'1');localStorage.setItem(k,'1');st.stockAcked=true;
  const D=$('#dlg-stock-ack');if(D&&D.open)try{D.close()}catch(_){}
  const w=$('#stock-ack-warn');if(w)w.hidden=true;const g=$('#grid');if(g)g.classList.remove('stock-locked')}
-function requireStockAck(){if(st.ses&&st.ses.rol==='vendedor'&&!st.stockAcked){const w=$('#stock-ack-warn');if(w)w.hidden=false;ensureStockAckPrompt(true);return false}return true}
+function requireStockAck(){if(st.ses&&st.ses.rol==='vendedor'&&!st.stockAcked){const w=$('#stock-ack-warn');if(w){w.hidden=false;w.textContent='Debes aceptar el stock para poder vender.'}ensureStockAckPrompt(true);return false}return true}
 function stockAckRows(){rebuildPendDelta();return(st.prods||[]).filter(p=>p.id in st.stock).map(p=>{const q=qtyOf(p.id);return{id:p.id,nombre:p.nombre,quedan:q,precio:p.precio}}).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es'))}
+async function flushPendingStockAck(){const raw=localStorage.getItem('pending_stock_ack');if(!raw||!st.ses||st.ses.rol!=='vendedor'||!navigator.onLine)return;
+ try{const p=JSON.parse(raw);if(p.puesto&&p.puesto!==st.ses.puesto)return;
+  const r=await API.stockAck(st.ses.token,p.snapshot||[]);if(r&&r.ok)localStorage.removeItem('pending_stock_ack')}catch(_){}}
+async function submitStockAck(){const rows=stockAckRows();const snap=rows.map(r=>({producto:r.id,quedan:r.quedan,nombre:r.nombre}));
+ const w=$('#stock-ack-warn');
+ if(navigator.onLine){const r=await API.stockAck(st.ses.token,snap).catch(e=>({ok:false,error:e.message||'Sin conexión'}));
+  if(!r||!r.ok){if(r&&tokenMalo(r))return false;if(w){w.hidden=false;w.textContent='No se pudo registrar en historial: '+(r&&(r.error||r.mensaje)||'error')+'. Reintenta.'}return false}
+  localStorage.removeItem('pending_stock_ack')}
+ else localStorage.setItem('pending_stock_ack',JSON.stringify({puesto:st.ses.puesto,vid:st.ses.vid,snapshot:snap,ts:Date.now()}));
+ markStockAckLocal();return true}
 function ensureStockAckPrompt(force){if(!st.ses||st.ses.rol!=='vendedor')return;
- if(!force&&hasStockAck()){st.stockAcked=true;const g=$('#grid');if(g)g.classList.remove('stock-locked');return}
+ if(!force&&hasStockAck()){st.stockAcked=true;const g=$('#grid');if(g)g.classList.remove('stock-locked');flushPendingStockAck();return}
  st.stockAcked=false;const g=$('#grid');if(g)g.classList.add('stock-locked');
  const D=$('#dlg-stock-ack'),list=$('#stock-ack-list');if(!D||!list)return;
  const rows=stockAckRows();
@@ -60,7 +70,7 @@ function ensureStockAckPrompt(force){if(!st.ses||st.ses.rol!=='vendedor')return;
   :'<p class="hint2" style="margin:0;color:var(--k)">No hay productos con stock en este puesto.</p>';
  if(!D.open){try{D.showModal()}catch(_){D.setAttribute('open','')}}}
 (function(){const ok=$('#stock-ack-ok'),out=$('#stock-ack-out'),D=$('#dlg-stock-ack');
- if(ok)ok.onclick=e=>{e.preventDefault();e.stopPropagation();markStockAck()};
+ if(ok)ok.onclick=e=>{e.preventDefault();e.stopPropagation();withBusy(ok,()=>submitStockAck())};
  if(out)out.onclick=e=>{e.preventDefault();$('#logout').click()};
  if(D)D.addEventListener('cancel',e=>{e.preventDefault();const w=$('#stock-ack-warn');if(w){w.hidden=false;w.textContent='Debes aceptar el stock (o salir) para continuar.'}})})();
 function paintBarSum(data){const el=$('#bar-sum');if(!el)return;
@@ -183,8 +193,8 @@ function pendMineCount(){if(!st.qMem)return 0;if(st.ses&&st.ses.rol==='vendedor'
 async function purgeOrphanQueue(active){const set=new Set(active||[]);const all=await qAll();const orphans=all.filter(e=>e._puesto&&!set.has(e._puesto));if(orphans.length)await qRemove(orphans.map(e=>e.id));return orphans.length}
 function updPend(){const n=pendMineCount();$('#pend').textContent=n?'⏳'+n:'✓';$('#net').textContent=navigator.onLine?'ONLINE':'OFFLINE';$('#net').className='pill '+(navigator.onLine?'on':'off');
  const b=$('#off-banner');if(b)b.hidden=navigator.onLine||!(st.ses&&st.ses.rol==='vendedor')}
-addEventListener('online',()=>{st.fallos=0;clearTimeout(st.bo);updPend();
- if(st.ses&&st.ses.rol==='vendedor')refreshCatalogQuiet().finally(()=>sync());else sync()});
+ addEventListener('online',()=>{st.fallos=0;clearTimeout(st.bo);updPend();
+ if(st.ses&&st.ses.rol==='vendedor'){flushPendingStockAck();refreshCatalogQuiet().finally(()=>sync())}else sync()});
 addEventListener('offline',updPend);setInterval(()=>{if(st.ses&&st.ses.rol==='vendedor'&&pendMineCount())sync()},30000);
 document.addEventListener('visibilitychange',()=>{
  if(document.hidden){borrarPines();return}
@@ -320,7 +330,15 @@ async function loadControl(){if(!st.ses||st.ses.rol!=='dueno')return;const box=$
   h+='<h3 class="sub">Por vendedor</h3>';
   (r.vendedores||[]).forEach(v=>{
    const hist=(v.historial_puestos||[]).map(p=>`${esc(p.nombre||p.puesto)}×${p.veces||0}`).join(', ')||'—';
-   h+=`<div class="line"><span class="nm"><b>${esc(v.nombre)}</b> · activo ${esc(v.puesto_activo||'—')}<br><span class="hint2">Puestos: ${hist}</span><br>Hoy ${v.hoy?.vendidas||0} vend. / ${v.hoy?.deshechas||0} desh. · Total ${v.total?.vendidas||0} / ${v.total?.deshechas||0}</span></div>`;
+   const asigLines=(v.asignaciones||[]).slice(0,10).map(a=>{
+    const hm=String(a.fecha_hora||'').slice(11,16)||'—';
+    const pu=esc(puLabel(a.puesto)||a.puesto||'—');
+    if(a.origen==='stock_ack')return`Aceptó stock · ${pu} · ${hm}${a.detalle?' · '+esc(a.detalle):''}`;
+    if(a.origen==='login')return`Entró · ${pu} · ${hm}`;
+    if(a.origen==='mover')return`Movido · ${pu} · ${hm}`;
+    return`${esc(a.origen||'evento')} · ${pu} · ${hm}`;
+   }).join('<br>')||'Sin eventos recientes';
+   h+=`<div class="line"><span class="nm"><b>${esc(v.nombre)}</b> · activo ${esc(v.puesto_activo||'—')}<br><span class="hint2">Puestos: ${hist}</span><br>Hoy ${v.hoy?.vendidas||0} vend. / ${v.hoy?.deshechas||0} desh. · Total ${v.total?.vendidas||0} / ${v.total?.deshechas||0}<br><span class="hint2">Historial: ${asigLines}</span></span></div>`;
   });
   box.innerHTML=h}catch(e){box.innerHTML='<p class="msg">Sin conexión al control</p>'}}
 /* ---- PIN en memoria (se borra al ocultar pestaña / salir). Va en la fila de Gestión › Puestos. ---- */
@@ -468,5 +486,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=45',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=46',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}

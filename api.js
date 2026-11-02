@@ -80,6 +80,10 @@ const API=(()=>{
     vendedores:d.vendedores.filter(v=>v.activo).map(v=>{const hist=(d.asignaciones||[]).filter(a=>a.vendedor===v.id);const seen={};const puestos=[];hist.forEach(a=>{if(!seen[a.puesto]){seen[a.puesto]={puesto:a.puesto,nombre:pNames[a.puesto]||a.puesto,veces:0,ultimo:a.fecha_hora};puestos.push(seen[a.puesto])}seen[a.puesto].veces++;seen[a.puesto].ultimo=a.fecha_hora});
      if(!puestos.length&&v.puesto)puestos.push({puesto:v.puesto,nombre:pNames[v.puesto]||v.puesto,veces:0,ultimo:''});
      return{id:v.id,nombre:v.nombre,puesto_activo:v.puesto,historial_puestos:puestos,asignaciones:hist.slice(-20).reverse(),hoy:st(v.id,hoyV),total:st(v.id,d.ventas)}}),no_store:true}},
+  stock_ack(q,d){const t=untok(q.token,'vendedor');const snap=Array.isArray(q.snapshot)?q.snapshot:[];
+   let skus=0,piezas=0;snap.forEach(x=>{if(!x)return;skus++;piezas+=Number(x.quedan)||0});
+   const row={id:crypto.randomUUID(),fecha_hora:API.ahoraMadrid(),vendedor:t.vid,puesto:t.p,origen:'stock_ack',detalle:skus+' fichas · '+piezas+' piezas'};
+   d.asignaciones=d.asignaciones||[];d.asignaciones.push(row);return{ack:row,no_store:true}},
   catalogo(q,d){let pu;if(q.token_dueno){untok(q.token_dueno,'dueno');pu=q.puesto;if(!pu)throw'PUESTO_INVALIDO'}else pu=untok(q.token,'vendedor').p;
    const puNom=(d.puestosT.find(p=>p.id===pu)||{}).nombre||pu;
    return{puesto:pu,puesto_nombre:puNom,puestos_nombres:{[pu]:puNom},productos:d.productos.filter(p=>p.activo).map(({activo,...p})=>p),stock:stockDe(d,pu)}},
@@ -119,6 +123,7 @@ const API=(()=>{
   pinesVer:token_dueno=>call({accion:'pines_ver',token_dueno}),
   pinCambiar:(token_dueno,puesto,vendedor_id)=>call({accion:'pin_crear_o_cambiar',token_dueno,puesto,vendedor_id}),estadoDueno:token_dueno=>call({accion:'estado_dueno',token_dueno}),
   controlDueno:(token_dueno,fecha)=>call({accion:'control_dueno',token_dueno,...(fecha?{fecha}:{})}),
+  stockAck:(token,snapshot)=>call({accion:'stock_ack',token,snapshot:snapshot||[]}),
   login:(pin,puesto)=>call(puesto==='dueno'?{accion:'login',dueno:true,pin,dispositivo:dev()}:{accion:'login',puesto,pin,dispositivo:dev()}),
   catalogo:(token,puesto)=>call(puesto?{accion:'catalogo',token_dueno:token,puesto}:{accion:'catalogo',token}),
   ventasLote:(token,ventas)=>call({accion:'ventas_lote',token,ventas}),
