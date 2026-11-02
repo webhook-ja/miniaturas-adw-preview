@@ -64,6 +64,7 @@ function rebuildPendDelta(){const m={};if(!st.ses){st.pendDelta=m;return m}
 function qtyOf(pid){return(st.stock[pid]||0)+(st.pendDelta[pid]||0)}
 function paintTileQty(pid){const tile=document.querySelector(`#grid .tile[data-id="${pid}"]`);if(!tile)return;
  const s=qtyOf(pid),el=tile.querySelector('.st');if(el)el.textContent=String(s);
+ const lab=tile.querySelector('.st-lab');if(lab)lab.textContent=s<=0?'Sin stock':'Quedan';
  tile.classList.toggle('low',s<=thr());tile.classList.toggle('zero',s<=0);tile.dataset.s=String(s)}
 function paintAllTileQtys(){document.querySelectorAll('#grid .tile[data-id]').forEach(t=>paintTileQty(t.dataset.id))}
 /* ---- Puesto (stock local + cola offline) ---- */
@@ -90,8 +91,9 @@ function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelt
  [...g.querySelectorAll('.tile[data-id]')].forEach(t=>keep.set(t.dataset.id,t));
  const want=st.prods.filter(p=>p.id in st.stock);const seen=new Set();
  want.forEach(p=>{seen.add(p.id);let b=keep.get(p.id);const s=qtyOf(p.id);const img=API.driveImg(p.foto_url);const desc=String(p.descripcion||'').trim();
+  const precio=Number(p.precio);const precioTxt=Number.isFinite(precio)?(Math.round(precio*100)/100)+' €':'';
   if(!b){b=document.createElement('div');b.dataset.id=p.id;b.style.setProperty('--c',p.color_icono);
-   b.innerHTML=`<div class="ic-wrap"></div><div class="nm"></div><div class="desc" hidden></div><div class="st"></div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
+   b.innerHTML=`<div class="ic-wrap"></div><div class="nm"></div><div class="price" hidden></div><div class="desc" hidden></div><div class="st-wrap"><span class="st-lab">Quedan</span><div class="st"></div></div><div class="tile-acts"><button type="button" class="tile-minus" aria-label="Vender uno">−</button><button type="button" class="tile-plus" aria-label="Sumar uno">+</button></div>`;
    b.querySelector('.tile-minus').onclick=e=>{e.stopPropagation();sell(b._prod||p)};
    b.querySelector('.tile-plus').onclick=e=>{e.stopPropagation();restock(b._prod||p)};
    b.addEventListener('click',()=>sell(b._prod||p));g.append(b)}
@@ -101,8 +103,11 @@ function renderGrid(){if(!st.ses||st.ses.rol!=='vendedor')return;rebuildPendDelt
    }else if(!cur||cur.tagName==='IMG'){wrap.innerHTML=`<span class="ic" style="--ic:${p.color_icono||'#999'}"></span>`}
    else cur.style.setProperty('--ic',p.color_icono||'#999')}
   const nm=b.querySelector('.nm');if(nm)nm.textContent=p.nombre;
+  const pr=b.querySelector('.price');if(pr){if(precioTxt){pr.hidden=false;pr.textContent=precioTxt}else{pr.hidden=true;pr.textContent=''}}
   const de=b.querySelector('.desc');if(de){if(desc){de.hidden=false;de.textContent=desc}else{de.hidden=true;de.textContent=''}}
-  b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'')+(img?' has-img':'');b.dataset.s=String(s);const stEl=b.querySelector('.st');if(stEl)stEl.textContent=String(s);
+  b.className='tile'+(s<=thr()?' low':'')+(s<=0?' zero':'')+(img?' has-img':'');b.dataset.s=String(s);
+  const stEl=b.querySelector('.st');if(stEl)stEl.textContent=String(s);
+  const lab=b.querySelector('.st-lab');if(lab)lab.textContent=s<=0?'Sin stock':'Quedan';
   b._prod=p});
  keep.forEach((t,id)=>{if(!seen.has(id))t.remove()})}
 const evento=(p,c)=>({id:uuid(),fecha_hora:API.ahoraMadrid(),producto:p,cantidad:c,_puesto:st.ses.puesto,_ts:Date.now()});
@@ -441,5 +446,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=43',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=44',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
