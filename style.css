@@ -65,10 +65,10 @@ dialog{border:3px solid var(--k);border-radius:10px;box-shadow:0 8px 0 rgba(58,6
 dialog h3{font-family:Pix;font-size:13px}dialog label{display:block;font-weight:700;margin:10px 0 4px}dialog input,dialog select{width:100%;font:inherit;padding:10px;border:3px solid var(--k);border-radius:6px}
 .dlg-b{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}.del{opacity:.55}.del .nm{text-decoration:line-through}.tag{font-size:11px;background:#e9e4d8;border:2px solid var(--k);border-radius:4px;padding:1px 5px;margin-left:6px}
 #adm .add{margin-bottom:12px}
-/* Tablet·phone: only Nueva figura + equipo center plus */
-.owner-panel[data-panel="figuras"] #adm > .blk.add{font-size:13px;padding:8px 12px;line-height:1.2;margin:0 0 10px}
-.owner-panel[data-panel="equipo"] #adm > .blk.add.plus{font-size:22px;line-height:1;width:40px;height:40px;padding:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;margin:0 0 10px}
-#adm .add.plus{font-size:44px;line-height:1;width:84px;height:84px;padding:0;border-radius:14px;display:block}
+/* Tablet·phone compact set (last wins over base .blk / old giant plus) */
+.owner-panel[data-panel="figuras"] #adm .blk.add:not(.plus){font-size:13px;padding:8px 12px;line-height:1.2;margin:0 0 10px}
+#adm .blk.add.plus{font-size:22px;line-height:1;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;margin:0 0 10px;box-sizing:border-box}
+#hoja .row2 .blk,#hoja-ok,#hoja-off{font-size:13px;padding:8px 12px;margin-bottom:8px;line-height:1.2}
 #hoja input{width:100%;padding:12px;font-size:16px;border:3px solid #333;border-radius:8px;box-sizing:border-box}#hoja .row2{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}#hoja .msg.okm{color:#3d7a55}#hoja-msg{line-height:1.4}
 .pill.ver{font-size:11px;opacity:.75}
 #hoja{margin-bottom:8px}
