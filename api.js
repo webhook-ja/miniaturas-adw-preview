@@ -30,7 +30,7 @@ const API=(()=>{
    return{ok_limpiar:true,puestos_activos:0,vendedores_activos:0,figuras_activas:d.productos.filter(p=>p.activo).length}},
   /* ---- CRUD del dueño (PROPUESTA: aún no está en Code.gs; ver bitacora.md) · borrado lógico ---- */
   /* ping: comprobar conexión (sin token). En Code.gs: {ok:true,hoja:getName(),version} */
-  ping(q,d){return{app:'miniaturas',hoja:'Hoja EJEMPLO (demo)',version:'demo-v8'}},
+  ping(q,d){return{app:'miniaturas',hoja:'Hoja EJEMPLO (demo)',version:'demo-v9'}},
   admin_listar(q,d){untok(q.token_dueno,'dueno');return{figuras:d.productos,puestos:d.puestosT,vendedores:d.vendedores.map(({pin,...v})=>({...v,activo:v.activo?1:0})),no_store:true}},
   figura_guardar(q,d){untok(q.token_dueno,'dueno');const f=q.figura||{};if(!f.nombre||!(Number(f.precio)>=0))throw'FALTAN_DATOS';
    let x=f.id&&d.productos.find(p=>p.id===f.id);if(f.id&&!x)throw'PRODUCTO_DESCONOCIDO';

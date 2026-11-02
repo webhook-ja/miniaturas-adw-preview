@@ -18,16 +18,25 @@ let pin='';const renderPin=()=>$('#pin-dots').textContent='●'.repeat(pin.lengt
 st.demoPins={};
 function paintLoginPin(){const el=$('#login-pin');if(!el)return;const who=$('#who').value;
  if(who==='dueno'){el.hidden=false;el.textContent='PIN dueño · 999999';return}
- const vid=$('#who-ven')&&$('#who-ven').value;const pin=(st.demoPins&&((vid&&st.demoPins[vid])||st.demoPins[who]));
+ /* Solo PIN del vendedor elegido (no el del puesto: solapa el select vacío). */
+ const vid=$('#who-ven')&&$('#who-ven').value;const pin=vid&&st.demoPins&&st.demoPins[vid];
  if(pin){el.hidden=false;el.textContent='PIN · '+pin;return}
  el.hidden=true;el.textContent=''}
 function paintVendorSelect(){const ven=$('#who-ven'),who=$('#who').value;if(!ven)return;
- if(who==='dueno'){ven.hidden=true;ven.innerHTML='';paintLoginPin();return}
- const list=(st.vendors||[]).slice().sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre),'es'));
- const pref=list.filter(v=>String(v.puesto)===String(who));const show=pref.length?pref:list;
+ if(who==='dueno'){ven.hidden=true;ven.innerHTML='';const m=$('#login-msg');if(m&&/vendedores|Equipo|Apps Script/i.test(m.textContent||''))m.textContent='';paintLoginPin();return}
+ /* Multi-puesto: cualquier vendedor activo puede entrar en el puesto elegido (PIN identifica). */
+ const list=(st.vendors||[]).filter(v=>v&&v.id).slice().sort((a,b)=>{
+  const ap=String(a.puesto)===String(who)?0:1,bp=String(b.puesto)===String(who)?0:1;
+  if(ap!==bp)return ap-bp;return String(a.nombre||'').localeCompare(String(b.nombre||''),'es')});
  ven.hidden=false;
- if(!show.length){ven.innerHTML='<option value="">Sin vendedores</option>';paintLoginPin();return}
- const keep=ven.value;ven.innerHTML=show.map(v=>`<option value="${esc(v.id)}">${esc(v.nombre)}${pref.length?'':' · '+esc(puLabel(v.puesto))}</option>`).join('');
+ if(!list.length){ven.innerHTML='<option value="">Sin vendedores</option>';
+  const m=$('#login-msg');if(m)m.textContent=st._vendorsApiMissing
+   ?'API antigua sin lista de vendedores — pega Code.gs gas-v4k+ y publica /exec'
+   :'No hay vendedores activos — créalos en Dueño › Equipo';
+  paintLoginPin();return}
+ const m=$('#login-msg');if(m&&/vendedores|Equipo|Apps Script|API antigua/i.test(m.textContent||''))m.textContent='';
+ const keep=ven.value;ven.innerHTML='<option value="">— Elige vendedor —</option>'+list.map(v=>{
+  const same=String(v.puesto)===String(who);return `<option value="${esc(v.id)}">${esc(v.nombre||v.id)}${same?'':' · '+esc(puLabel(v.puesto))}</option>`}).join('');
  if(keep&&[...ven.options].some(o=>o.value===keep))ven.value=keep;paintLoginPin()}
 function mergePuestoNames(map){if(!map||typeof map!=='object')return;st.puestoNames=Object.assign(st.puestoNames||{},map);st._puMap=null;
  try{QueueDB.set('puestos_nombres',st.puestoNames)}catch(_){}}
@@ -41,6 +50,7 @@ async function loadPuestos(){let ps=await QueueDB.get('puestos');
  try{const cached=await QueueDB.get('puestos_nombres');if(cached)mergePuestoNames(cached)}catch(_){}
  try{const cachedV=await QueueDB.get('vendedores_login');if(Array.isArray(cachedV))st.vendors=cachedV}catch(_){}
  try{const r=await API.puestos();if(r.ok){ps=r.puestos;QueueDB.set('puestos',ps);st.demoPins=r.demo_pins||{};
+  st._vendorsApiMissing=!Array.isArray(r.vendedores);
   if(Array.isArray(r.vendedores)){st.vendors=r.vendedores;try{QueueDB.set('vendedores_login',st.vendors)}catch(_){}}
   if(r.puestos_nombres)mergePuestoNames(r.puestos_nombres);
   else if(Array.isArray(r.puestos_detalle))mergePuestoNames(Object.fromEntries(r.puestos_detalle.filter(p=>p&&p.id).map(p=>[p.id,p.nombre||p.id])))}}catch(e){}
@@ -538,5 +548,5 @@ $('#hoja-ok').onclick=()=>withBusy($('#hoja-ok'),async()=>{const u=$('#hoja-url'
 $('#hoja-off').onclick=()=>withBusy($('#hoja-off'),async()=>{if(!confirm('¿Desconectar la hoja y volver a la DEMO?'))return;localStorage.removeItem('api_url');localStorage.removeItem('api_hoja');$('#hoja-url').value='';hojaPaint();hojaMsg('Desconectado. Vuelves al modo DEMO.',1);await hojaCambio()});
 hojaPaint();
 renderPin();updPend();loadPuestos();QueueDB.get('ses').then(ses=>{if(ses){st.ses=ses;start()}else show('login')});
-if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=47',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
+if('serviceWorker'in navigator){const had=!!navigator.serviceWorker.controller;navigator.serviceWorker.register('sw.js?v=49',{updateViaCache:'none'}).then(r=>r.update()).catch(()=>{});
  navigator.serviceWorker.addEventListener('controllerchange',()=>{if(!had||sessionStorage.getItem('sw_reload')==='20')return;sessionStorage.setItem('sw_reload','20');location.reload()})}
